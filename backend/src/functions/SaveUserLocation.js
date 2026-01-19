@@ -1,40 +1,48 @@
 const { app } = require('@azure/functions');
 const { TableClient } = require('@azure/data-tables');
 
-// Initialize Table Storage client
 const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING || 'UseDevelopmentStorage=true';
 const tableClient = TableClient.fromConnectionString(connectionString, 'UserLocations');
 
 app.http('SaveUserLocation', {
-    methods: ['POST'],
+    methods: ['POST', 'OPTIONS'],
     authLevel: 'anonymous',
     handler: async (request, context) => {
+        // Handle CORS preflight
+        if (request.method === 'OPTIONS') {
+            return {
+                status: 200,
+                headers: {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type',
+                }
+            };
+        }
+
         context.log('SaveUserLocation function triggered');
 
         try {
-            // Get data from request body
             const body = await request.json();
             const { userId, locationName, country, alertsEnabled, minTemp, maxTemp } = body;
 
-            // Validate required fields
             if (!userId || !locationName) {
                 return {
                     status: 400,
+                    headers: {
+                        'Access-Control-Allow-Origin': '*',
+                    },
                     body: JSON.stringify({ 
                         error: 'userId and locationName are required' 
                     })
                 };
             }
 
-            // Create table if it doesn't exist
-            await tableClient.createTable().catch(() => {
-                // Table already exists, ignore error
-            });
+            await tableClient.createTable().catch(() => {});
 
-            // Create entity (row) for Table Storage
             const entity = {
-                partitionKey: userId,  // Groups data by user
-                rowKey: locationName,  // Unique identifier within partition
+                partitionKey: userId,
+                rowKey: locationName,
                 locationName: locationName,
                 country: country || '',
                 alertsEnabled: alertsEnabled ?? true,
@@ -43,7 +51,6 @@ app.http('SaveUserLocation', {
                 createdAt: new Date().toISOString()
             };
 
-            // Save to table (upsert = create or update)
             await tableClient.upsertEntity(entity, 'Replace');
 
             context.log(`Location saved: ${locationName} for user ${userId}`);
@@ -52,7 +59,7 @@ app.http('SaveUserLocation', {
                 status: 200,
                 headers: {
                     'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
+                    'Access-Control-Allow-Origin': '*',
                 },
                 body: JSON.stringify({ 
                     message: 'Location saved successfully',
@@ -65,6 +72,9 @@ app.http('SaveUserLocation', {
             
             return {
                 status: 500,
+                headers: {
+                    'Access-Control-Allow-Origin': '*',
+                },
                 body: JSON.stringify({ 
                     error: 'Failed to save location',
                     details: error.message 

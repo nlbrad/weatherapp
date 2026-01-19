@@ -1,26 +1,47 @@
 const { app } = require('@azure/functions');
 const axios = require('axios');
 
-// Get weather data for a specific location
 app.http('GetWeather', {
-    methods: ['GET', 'POST'],
+    methods: ['GET', 'POST', 'OPTIONS'],
     authLevel: 'anonymous',
     handler: async (request, context) => {
-        context.info('GetWeather function triggered');
+        // Handle CORS preflight
+        if (request.method === 'OPTIONS') {
+            return {
+                status: 200,
+                headers: {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type',
+                }
+            };
+        }
+
+        context.log('GetWeather function triggered');
 
         try {
-            // Get location from query params or body
-            const city = request.query.get('city') || (await request.json()).city;
-            const country = request.query.get('country') || (await request.json()).country;
+            let city, country;
+            
+            // Get parameters from query string or body
+            if (request.method === 'GET') {
+                city = request.query.get('city');
+                country = request.query.get('country');
+            } else {
+                const body = await request.json();
+                city = body.city;
+                country = body.country;
+            }
 
             if (!city) {
                 return {
                     status: 400,
+                    headers: {
+                        'Access-Control-Allow-Origin': '*',
+                    },
                     body: JSON.stringify({ error: 'City parameter is required' })
                 };
             }
 
-            // Call OpenWeatherMap API
             const apiKey = process.env.OPENWEATHER_API_KEY;
             const location = country ? `${city},${country}` : city;
             const url = `https://api.openweathermap.org/data/2.5/weather?q=${location}&appid=${apiKey}&units=metric`;
@@ -28,7 +49,6 @@ app.http('GetWeather', {
             const response = await axios.get(url);
             const weatherData = response.data;
 
-            // Format the response
             const result = {
                 location: {
                     name: weatherData.name,
@@ -56,7 +76,7 @@ app.http('GetWeather', {
                 status: 200,
                 headers: {
                     'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
+                    'Access-Control-Allow-Origin': '*',
                 },
                 body: JSON.stringify(result)
             };
@@ -66,6 +86,9 @@ app.http('GetWeather', {
             
             return {
                 status: error.response?.status || 500,
+                headers: {
+                    'Access-Control-Allow-Origin': '*',
+                },
                 body: JSON.stringify({ 
                     error: 'Failed to fetch weather data',
                     details: error.message 

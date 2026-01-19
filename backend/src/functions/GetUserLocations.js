@@ -5,9 +5,21 @@ const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING || 'UseDeve
 const tableClient = TableClient.fromConnectionString(connectionString, 'UserLocations');
 
 app.http('GetUserLocations', {
-    methods: ['GET'],
+    methods: ['GET', 'OPTIONS'],
     authLevel: 'anonymous',
     handler: async (request, context) => {
+        // Handle CORS preflight
+        if (request.method === 'OPTIONS') {
+            return {
+                status: 200,
+                headers: {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type',
+                }
+            };
+        }
+
         context.log('GetUserLocations function triggered');
 
         try {
@@ -16,6 +28,9 @@ app.http('GetUserLocations', {
             if (!userId) {
                 return {
                     status: 400,
+                    headers: {
+                        'Access-Control-Allow-Origin': '*',
+                    },
                     body: JSON.stringify({ 
                         error: 'userId parameter is required' 
                     })
@@ -46,7 +61,7 @@ app.http('GetUserLocations', {
                 status: 200,
                 headers: {
                     'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
+                    'Access-Control-Allow-Origin': '*',
                 },
                 body: JSON.stringify({ 
                     userId: userId,
@@ -59,6 +74,9 @@ app.http('GetUserLocations', {
             
             return {
                 status: 500,
+                headers: {
+                    'Access-Control-Allow-Origin': '*',
+                },
                 body: JSON.stringify({ 
                     error: 'Failed to retrieve locations',
                     details: error.message 
