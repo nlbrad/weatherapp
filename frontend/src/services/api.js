@@ -1,5 +1,5 @@
 // API configuration
-const API_BASE_URL = '/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://weather-alert-backend-cxc6ghhhagd7dgb8.westeurope-01.azurewebsites.net/api';
 
 // Helper function for API calls
 async function fetchAPI(endpoint, options = {}) {
