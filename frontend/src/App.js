@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Cloud, Plus, Trash2, Settings, MapPin, AlertCircle, Loader } from 'lucide-react';
 import { weatherAPI, locationsAPI, alertsAPI } from './services/api';
+import WeatherCard from './components/WeatherCard';
 
 export default function WeatherAlertApp() {
-  // For demo purposes, using a hardcoded userId
-  // In production, this would come from authentication
   const userId = 'user123';
   
   const [locations, setLocations] = useState([]);
@@ -20,50 +19,54 @@ export default function WeatherAlertApp() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [saving, setSaving] = useState(false);
 
-  // Load user's locations on mount
   useEffect(() => {
     loadLocations();
   }, []);
 
-  // Fetch locations from backend
   const loadLocations = async () => {
     try {
       setLoading(true);
       setError(null);
       const data = await locationsAPI.getUserLocations(userId);
       
-      // Fetch current weather for each location
       const locationsWithWeather = await Promise.all(
         data.locations.map(async (loc) => {
           try {
-            const weather = await weatherAPI.getWeather(loc.locationName, loc.country);
+            const weatherData = await weatherAPI.getWeather(loc.locationName, loc.country);
             return {
-              id: `${loc.locationName}-${loc.country}`,
-              name: loc.locationName,
+              // Location info
+              locationName: loc.locationName,
               country: loc.country,
-              temp: weather.weather.temp,
-              condition: weather.weather.description,
-              alerts: loc.alertsEnabled,
+              alertsEnabled: loc.alertsEnabled,
               minTemp: loc.minTemp,
               maxTemp: loc.maxTemp,
+              // Weather info (complete structure for WeatherCard)
+              weather: {
+                temp: weatherData.weather.temp,
+                feelsLike: weatherData.weather.feelsLike,
+                tempMin: weatherData.weather.tempMin,
+                tempMax: weatherData.weather.tempMax,
+                humidity: weatherData.weather.humidity,
+                pressure: weatherData.weather.pressure,
+                condition: weatherData.weather.condition,
+                description: weatherData.weather.description,
+                visibility: weatherData.weather.visibility || 10,
+                wind: {
+                  speed: weatherData.wind.speed,
+                  direction: weatherData.wind.direction
+                },
+                airQuality: weatherData.airQuality // Include air quality data
+              }
             };
           } catch (err) {
             console.error(`Failed to fetch weather for ${loc.locationName}:`, err);
-            return {
-              id: `${loc.locationName}-${loc.country}`,
-              name: loc.locationName,
-              country: loc.country,
-              temp: '--',
-              condition: 'Unable to load',
-              alerts: loc.alertsEnabled,
-              minTemp: loc.minTemp,
-              maxTemp: loc.maxTemp,
-            };
+            return null; // Filter out failed locations
           }
         })
       );
       
-      setLocations(locationsWithWeather);
+      // Filter out nulls (failed API calls)
+      setLocations(locationsWithWeather.filter(loc => loc !== null));
     } catch (err) {
       setError('Failed to load locations. Make sure the backend is running.');
       console.error('Error loading locations:', err);
@@ -72,7 +75,6 @@ export default function WeatherAlertApp() {
     }
   };
 
-  // Add a new location
   const addLocation = async () => {
     if (!newLocation.name || !newLocation.country) {
       alert('Please enter both city name and country code');
@@ -82,7 +84,6 @@ export default function WeatherAlertApp() {
     try {
       setSaving(true);
       
-      // Save to backend
       await locationsAPI.saveLocation({
         userId: userId,
         locationName: newLocation.name,
@@ -92,10 +93,8 @@ export default function WeatherAlertApp() {
         maxTemp: parseInt(newLocation.maxTemp),
       });
 
-      // Reload locations to get the updated list
       await loadLocations();
       
-      // Reset form
       setNewLocation({ name: '', country: '', minTemp: 0, maxTemp: 30 });
       setShowAddLocation(false);
     } catch (err) {
@@ -106,40 +105,19 @@ export default function WeatherAlertApp() {
     }
   };
 
-  // Remove a location
-  const removeLocation = async (locationToRemove) => {
-    // Note: We don't have a delete endpoint yet, so we'll just remove from UI
-    // In a full implementation, you'd call a backend delete endpoint here
-    setLocations(locations.filter(loc => loc.id !== locationToRemove.id));
-  };
-
-  // Toggle alerts for a location
-  const toggleAlerts = async (locationId) => {
-    const location = locations.find(loc => loc.id === locationId);
-    if (!location) return;
-
-    try {
-      // Update in backend
-      await locationsAPI.saveLocation({
-        userId: userId,
-        locationName: location.name,
-        country: location.country,
-        alertsEnabled: !location.alerts,
-        minTemp: location.minTemp,
-        maxTemp: location.maxTemp,
-      });
-
-      // Update local state
-      setLocations(locations.map(loc => 
-        loc.id === locationId ? { ...loc, alerts: !loc.alerts } : loc
-      ));
-    } catch (err) {
-      alert('Failed to update alert settings');
-      console.error('Error toggling alerts:', err);
+  const removeLocation = async (location) => {
+    if (window.confirm(`Remove ${location.locationName}?`)) {
+      // Note: Add delete API call here when endpoint is ready
+      setLocations(locations.filter(loc => loc.locationName !== location.locationName));
     }
   };
 
-  // Manually trigger alert check
+  const editLocation = (location) => {
+    // TODO: Open edit modal
+    console.log('Edit location:', location);
+    alert('Edit functionality coming soon!');
+  };
+
   const triggerAlertCheck = async () => {
     try {
       await alertsAPI.checkAlerts();
@@ -151,31 +129,31 @@ export default function WeatherAlertApp() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
+    <div className="min-h-screen bg-dark-bg p-6">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+        <div className="bg-dark-surface border border-dark-border rounded-lg shadow-lg p-6 mb-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Cloud className="w-10 h-10 text-blue-500" />
+              <Cloud className="w-10 h-10 text-primary" />
               <div>
-                <h1 className="text-3xl font-bold text-gray-800">Weather Alert System</h1>
-                <p className="text-gray-600">Get WhatsApp alerts for weather changes</p>
+                <h1 className="text-3xl font-bold text-white">Weather Alert System</h1>
+                <p className="text-gray-400">Get WhatsApp alerts for weather changes</p>
               </div>
             </div>
             <div className="flex gap-2">
               <button
                 onClick={triggerAlertCheck}
-                className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+                className="px-4 py-2 bg-accent-green text-white rounded-lg hover:bg-accent-green/80 transition-colors"
                 title="Manually check for alerts"
               >
                 Check Alerts Now
               </button>
               <button
                 onClick={() => setActiveTab('settings')}
-                className="p-3 rounded-lg hover:bg-gray-100 transition-colors"
+                className="p-3 rounded-lg hover:bg-dark-elevated transition-colors"
               >
-                <Settings className="w-6 h-6 text-gray-600" />
+                <Settings className="w-6 h-6 text-gray-400" />
               </button>
             </div>
           </div>
@@ -183,21 +161,21 @@ export default function WeatherAlertApp() {
 
         {/* Error Message */}
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 text-red-500" />
-            <p className="text-red-700">{error}</p>
+          <div className="bg-accent-red/10 border border-accent-red/30 rounded-lg p-4 mb-6 flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-accent-red" />
+            <p className="text-accent-red">{error}</p>
           </div>
         )}
 
         {/* Navigation Tabs */}
-        <div className="bg-white rounded-lg shadow-lg mb-6">
-          <div className="flex border-b">
+        <div className="bg-dark-surface border border-dark-border rounded-lg shadow-lg mb-6">
+          <div className="flex border-b border-dark-border">
             <button
               onClick={() => setActiveTab('dashboard')}
               className={`flex-1 py-4 px-6 font-semibold transition-colors ${
                 activeTab === 'dashboard'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-600 hover:text-gray-800'
+                  ? 'text-primary border-b-2 border-primary'
+                  : 'text-gray-400 hover:text-gray-200'
               }`}
             >
               Dashboard
@@ -206,8 +184,8 @@ export default function WeatherAlertApp() {
               onClick={() => setActiveTab('alerts')}
               className={`flex-1 py-4 px-6 font-semibold transition-colors ${
                 activeTab === 'alerts'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-600 hover:text-gray-800'
+                  ? 'text-primary border-b-2 border-primary'
+                  : 'text-gray-400 hover:text-gray-200'
               }`}
             >
               Alert Settings
@@ -216,8 +194,8 @@ export default function WeatherAlertApp() {
               onClick={() => setActiveTab('settings')}
               className={`flex-1 py-4 px-6 font-semibold transition-colors ${
                 activeTab === 'settings'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-600 hover:text-gray-800'
+                  ? 'text-primary border-b-2 border-primary'
+                  : 'text-gray-400 hover:text-gray-200'
               }`}
             >
               Settings
@@ -229,18 +207,17 @@ export default function WeatherAlertApp() {
         {activeTab === 'dashboard' && (
           <div>
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-gray-800">Your Locations</h2>
-              <div className="flex gap-3">
+              <h2 className="text-2xl font-bold text-white">Your Locations</h2>
+              <div className="flex gap-2">
                 <button
                   onClick={loadLocations}
-                  className="flex items-center gap-2 bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors"
-                  disabled={loading}
+                  className="px-4 py-2 bg-dark-elevated text-gray-300 rounded-lg hover:bg-dark-border transition-colors"
                 >
-                  {loading ? <Loader className="w-5 h-5 animate-spin" /> : 'Refresh'}
+                  Refresh
                 </button>
                 <button
-                  onClick={() => setShowAddLocation(true)}
-                  className="flex items-center gap-2 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors"
+                  onClick={() => setShowAddLocation(!showAddLocation)}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors"
                 >
                   <Plus className="w-5 h-5" />
                   Add Location
@@ -250,43 +227,70 @@ export default function WeatherAlertApp() {
 
             {/* Add Location Form */}
             {showAddLocation && (
-              <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-                <h3 className="text-xl font-semibold mb-4">Add New Location</h3>
+              <div className="bg-dark-surface border border-dark-border rounded-lg shadow-lg p-6 mb-6">
+                <h3 className="text-xl font-bold text-white mb-4">Add New Location</h3>
                 <div className="grid grid-cols-2 gap-4 mb-4">
-                  <input
-                    type="text"
-                    placeholder="City name"
-                    value={newLocation.name}
-                    onChange={(e) => setNewLocation({ ...newLocation, name: e.target.value })}
-                    className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Country code (e.g., IE)"
-                    value={newLocation.country}
-                    onChange={(e) => setNewLocation({ ...newLocation, country: e.target.value.toUpperCase() })}
-                    className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                  <input
-                    type="number"
-                    placeholder="Min temp (°C)"
-                    value={newLocation.minTemp}
-                    onChange={(e) => setNewLocation({ ...newLocation, minTemp: e.target.value })}
-                    className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                  <input
-                    type="number"
-                    placeholder="Max temp (°C)"
-                    value={newLocation.maxTemp}
-                    onChange={(e) => setNewLocation({ ...newLocation, maxTemp: e.target.value })}
-                    className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
+                  <div>
+                    <label className="block text-sm font-medium text-gray-400 mb-2">
+                      City Name
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Dublin"
+                      value={newLocation.name}
+                      onChange={(e) => setNewLocation({...newLocation, name: e.target.value})}
+                      className="w-full px-4 py-2 bg-dark-elevated border border-dark-border rounded-lg 
+                               text-white placeholder-gray-500
+                               focus:ring-2 focus:ring-primary focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-400 mb-2">
+                      Country Code
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="IE"
+                      value={newLocation.country}
+                      onChange={(e) => setNewLocation({...newLocation, country: e.target.value})}
+                      className="w-full px-4 py-2 bg-dark-elevated border border-dark-border rounded-lg 
+                               text-white placeholder-gray-500
+                               focus:ring-2 focus:ring-primary focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-400 mb-2">
+                      Min Temp (°C)
+                    </label>
+                    <input
+                      type="number"
+                      value={newLocation.minTemp}
+                      onChange={(e) => setNewLocation({...newLocation, minTemp: e.target.value})}
+                      className="w-full px-4 py-2 bg-dark-elevated border border-dark-border rounded-lg 
+                               text-white
+                               focus:ring-2 focus:ring-primary focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-400 mb-2">
+                      Max Temp (°C)
+                    </label>
+                    <input
+                      type="number"
+                      value={newLocation.maxTemp}
+                      onChange={(e) => setNewLocation({...newLocation, maxTemp: e.target.value})}
+                      className="w-full px-4 py-2 bg-dark-elevated border border-dark-border rounded-lg 
+                               text-white
+                               focus:ring-2 focus:ring-primary focus:border-transparent"
+                    />
+                  </div>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex justify-end gap-2">
                   <button
                     onClick={addLocation}
                     disabled={saving}
-                    className="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition-colors disabled:bg-blue-300"
+                    className="bg-primary text-white px-6 py-2 rounded-lg hover:bg-primary-dark 
+                             transition-colors disabled:opacity-50"
                   >
                     {saving ? 'Saving...' : 'Add'}
                   </button>
@@ -295,7 +299,8 @@ export default function WeatherAlertApp() {
                       setShowAddLocation(false);
                       setNewLocation({ name: '', country: '', minTemp: 0, maxTemp: 30 });
                     }}
-                    className="bg-gray-200 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-300 transition-colors"
+                    className="bg-dark-elevated text-gray-300 px-6 py-2 rounded-lg 
+                             hover:bg-dark-border transition-colors"
                   >
                     Cancel
                   </button>
@@ -306,72 +311,37 @@ export default function WeatherAlertApp() {
             {/* Loading State */}
             {loading && (
               <div className="flex justify-center items-center py-12">
-                <Loader className="w-8 h-8 animate-spin text-blue-500" />
-                <span className="ml-3 text-gray-600">Loading locations...</span>
+                <Loader className="w-8 h-8 animate-spin text-primary" />
+                <span className="ml-3 text-gray-400">Loading locations...</span>
               </div>
             )}
 
-            {/* Location Cards */}
+            {/* No Locations State */}
             {!loading && locations.length === 0 && (
-              <div className="bg-white rounded-lg shadow-lg p-12 text-center">
-                <Cloud className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-gray-700 mb-2">No locations yet</h3>
+              <div className="bg-dark-surface border border-dark-border rounded-lg shadow-lg p-12 text-center">
+                <Cloud className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                <h3 className="text-xl font-semibold text-gray-300 mb-2">No locations yet</h3>
                 <p className="text-gray-500 mb-4">Add your first location to start receiving weather alerts</p>
                 <button
                   onClick={() => setShowAddLocation(true)}
-                  className="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition-colors"
+                  className="bg-primary text-white px-6 py-2 rounded-lg hover:bg-primary-dark transition-colors"
                 >
                   Add Location
                 </button>
               </div>
             )}
 
+            {/* Enhanced Weather Cards */}
             {!loading && locations.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {locations.map(location => (
-                  <div key={location.id} className="bg-white rounded-lg shadow-lg p-6 hover:shadow-xl transition-shadow">
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex items-center gap-2">
-                        <MapPin className="w-5 h-5 text-blue-500" />
-                        <div>
-                          <h3 className="text-xl font-semibold text-gray-800">{location.name}</h3>
-                          <p className="text-sm text-gray-500">{location.country}</p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => removeLocation(location)}
-                        className="text-red-500 hover:text-red-700 transition-colors"
-                      >
-                        <Trash2 className="w-5 h-5" />
-                      </button>
-                    </div>
-                    
-                    <div className="mb-4">
-                      <div className="text-4xl font-bold text-gray-800 mb-2">
-                        {typeof location.temp === 'number' ? `${location.temp.toFixed(1)}°C` : location.temp}
-                      </div>
-                      <div className="text-gray-600 capitalize">{location.condition}</div>
-                      <div className="text-sm text-gray-500 mt-2">
-                        Alerts: {location.minTemp}°C - {location.maxTemp}°C
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-                      <span className="text-sm text-gray-600">WhatsApp Alerts</span>
-                      <button
-                        onClick={() => toggleAlerts(location.id)}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          location.alerts ? 'bg-blue-500' : 'bg-gray-300'
-                        }`}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            location.alerts ? 'translate-x-6' : 'translate-x-1'
-                          }`}
-                        />
-                      </button>
-                    </div>
-                  </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {locations.map((location) => (
+                  <WeatherCard
+                    key={`${location.locationName}-${location.country}`}
+                    location={location}
+                    weather={location.weather}
+                    onDelete={removeLocation}
+                    onEdit={editLocation}
+                  />
                 ))}
               </div>
             )}
@@ -380,30 +350,30 @@ export default function WeatherAlertApp() {
 
         {/* Alert Settings Tab */}
         {activeTab === 'alerts' && (
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <h2 className="text-2xl font-bold text-gray-800 mb-6">Alert Preferences</h2>
+          <div className="bg-dark-surface border border-dark-border rounded-lg shadow-lg p-6">
+            <h2 className="text-2xl font-bold text-white mb-6">Alert Preferences</h2>
             
             <div className="space-y-6">
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-blue-800">
+              <div className="bg-primary/10 border border-primary/30 rounded-lg p-4">
+                <p className="text-primary">
                   Temperature thresholds are set individually for each location when you add them.
-                  Edit a location's card to modify its alert settings.
+                  Use the edit button on each weather card to modify alert settings.
                 </p>
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-3">
+                <label className="block text-sm font-semibold text-gray-300 mb-3">
                   Alert Types (Coming Soon)
                 </label>
                 <div className="space-y-3">
                   {['Heavy Rain', 'Storm Warning', 'Extreme Temperature', 'High Wind', 'Snow'].map(alert => (
-                    <label key={alert} className="flex items-center gap-3 cursor-pointer opacity-50">
+                    <label key={alert} className="flex items-center gap-3 cursor-not-allowed opacity-50">
                       <input
                         type="checkbox"
                         disabled
-                        className="w-5 h-5 text-blue-500 rounded focus:ring-2 focus:ring-blue-500"
+                        className="w-5 h-5 text-primary rounded focus:ring-2 focus:ring-primary"
                       />
-                      <span className="text-gray-700">{alert}</span>
+                      <span className="text-gray-400">{alert}</span>
                     </label>
                   ))}
                 </div>
@@ -414,18 +384,20 @@ export default function WeatherAlertApp() {
 
         {/* Settings Tab */}
         {activeTab === 'settings' && (
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <h2 className="text-2xl font-bold text-gray-800 mb-6">Settings</h2>
+          <div className="bg-dark-surface border border-dark-border rounded-lg shadow-lg p-6">
+            <h2 className="text-2xl font-bold text-white mb-6">Settings</h2>
             
             <div className="space-y-6">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <label className="block text-sm font-semibold text-gray-300 mb-2">
                   WhatsApp Phone Number
                 </label>
                 <input
                   type="tel"
                   placeholder="+353 1234 5678"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2 bg-dark-elevated border border-dark-border rounded-lg 
+                           text-gray-500 placeholder-gray-600
+                           focus:ring-2 focus:ring-primary focus:border-transparent"
                   disabled
                 />
                 <p className="text-sm text-gray-500 mt-2">
@@ -434,11 +406,13 @@ export default function WeatherAlertApp() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <label className="block text-sm font-semibold text-gray-300 mb-2">
                   Check Frequency
                 </label>
                 <select 
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2 bg-dark-elevated border border-dark-border rounded-lg 
+                           text-gray-500
+                           focus:ring-2 focus:ring-primary focus:border-transparent"
                   disabled
                 >
                   <option>Every hour (Current)</option>
@@ -452,14 +426,14 @@ export default function WeatherAlertApp() {
                 </p>
               </div>
 
-              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+              <div className="flex items-center justify-between p-4 bg-dark-elevated rounded-lg border border-dark-border">
                 <div>
-                  <div className="font-semibold text-gray-800">Connection Status</div>
-                  <div className="text-sm text-gray-600">Backend API</div>
+                  <div className="font-semibold text-white">Connection Status</div>
+                  <div className="text-sm text-gray-400">Backend API</div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className={`w-3 h-3 rounded-full ${error ? 'bg-red-500' : 'bg-green-500'}`}></div>
-                  <span className="text-sm text-gray-600">{error ? 'Disconnected' : 'Connected'}</span>
+                  <div className={`w-3 h-3 rounded-full ${error ? 'bg-accent-red' : 'bg-accent-green'}`}></div>
+                  <span className="text-sm text-gray-400">{error ? 'Disconnected' : 'Connected'}</span>
                 </div>
               </div>
             </div>
