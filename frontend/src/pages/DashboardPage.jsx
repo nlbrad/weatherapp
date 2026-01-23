@@ -2,6 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Loader, Cloud } from 'lucide-react';
 import { weatherAPI, locationsAPI } from '../services/api';
+import QuickStatsBar from '../components/dashboard/QuickStatsBar';
+import WindAnalysis from '../components/dashboard/WindAnalysis';
+import AirQualityBreakdown from '../components/dashboard/AirQualityBreakdown';
+import MetricsGrid from '../components/dashboard/MetricsGrid';
 
 /**
  * DashboardPage - Full dashboard view for single location
@@ -168,57 +172,47 @@ const DashboardPage = () => {
 
       {/* Main Dashboard Content */}
       <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Phase 2.2: Empty shell with placeholder */}
+        {/* QuickStats Bar */}
+        <QuickStatsBar weather={weather} />
+
+        {/* Two Column Layout - Wind + Air Quality */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          {/* Wind Analysis Widget */}
+          <WindAnalysis wind={weather.wind} />
+          
+          {/* Air Quality Breakdown */}
+          <AirQualityBreakdown airQuality={weather.airQuality} />
+        </div>
+
+        {/* Additional Metrics Grid */}
+        <MetricsGrid weather={weather} />
+
+        {/* Phase 2.3: Charts need backend work */}
         <div className="bg-dark-surface border border-dark-border rounded-xl p-12 text-center">
           <Cloud className="w-20 h-20 text-primary mx-auto mb-6 opacity-50" />
           <h2 className="text-2xl font-bold text-white mb-3">
-            Dashboard Coming Soon
+            Forecast Charts Coming Next
           </h2>
-          <p className="text-gray-400 mb-6 max-w-md mx-auto">
-            We're building amazing dashboard widgets for {location.locationName}. 
-            Charts, forecasts, and detailed metrics will appear here in Phase 2.3!
+          <p className="text-gray-400 mb-2 max-w-md mx-auto">
+            The dashboard is looking great! Next step: Add backend forecast API to enable temperature and hourly charts.
           </p>
-
-          {/* Current Weather Preview (so it's not completely empty) */}
-          <div className="bg-dark-elevated border border-dark-border rounded-lg p-6 max-w-sm mx-auto">
-            <p className="text-sm text-gray-400 mb-2">Current Weather</p>
-            <p className="text-5xl font-bold font-mono text-white mb-2">
-              {weather.temp.toFixed(1)}°
-            </p>
-            <p className="text-gray-300 capitalize mb-4">{weather.description}</p>
-            <div className="grid grid-cols-3 gap-3 text-sm">
-              <div>
-                <p className="text-gray-500">Feels</p>
-                <p className="text-white font-mono">{weather.feelsLike.toFixed(1)}°</p>
-              </div>
-              <div>
-                <p className="text-gray-500">Humidity</p>
-                <p className="text-white font-mono">{weather.humidity}%</p>
-              </div>
-              <div>
-                <p className="text-gray-500">Wind</p>
-                <p className="text-white font-mono">{weather.wind.speed} km/h</p>
-              </div>
-            </div>
-          </div>
-
-          <button
-            onClick={() => navigate('/')}
-            className="mt-8 px-6 py-2 bg-dark-elevated text-gray-300 rounded-lg 
-                     hover:bg-dark-border transition-colors"
-          >
-            Back to Summary View
-          </button>
+          <p className="text-sm text-gray-500">
+            Phase 2.4: GetForecast backend function + Recharts visualizations
+          </p>
         </div>
 
-        {/* TODO Phase 2.3: Add widgets here */}
+        {/* TODO Phase 2.4: Add forecast widgets (need backend) */}
         {/* 
-        - QuickStatsBar
-        - TemperatureForecast chart
-        - HourlyForecast chart
-        - WindAnalysis with compass
-        - AirQualityBreakdown
-        - etc.
+        Backend needed:
+        - Create GetForecast.js Azure Function
+        - Add 7-day daily forecast endpoint
+        - Add 24-hour hourly forecast endpoint
+        
+        Then build:
+        - TemperatureForecast chart (7-day line chart)
+        - HourlyForecast chart (24h bar chart)
+        - PrecipitationChart (rain probability)
+        - SunMoonWidget (sunrise/sunset times)
         */}
       </div>
     </div>
