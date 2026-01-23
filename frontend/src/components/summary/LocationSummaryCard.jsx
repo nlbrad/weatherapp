@@ -50,29 +50,25 @@ const LocationSummaryCard = ({ location, weather, onDelete }) => {
 
   const WeatherIcon = getWeatherIcon(weather.condition);
 
-  // Calculate health status (combines air quality + alerts)
-  const getHealthStatus = () => {
-    if (!weather.airQuality) return 'good';
+  // Calculate visibility status (we have this data!)
+  const getVisibilityStatus = () => {
+    const vis = weather.visibility || 10; // km
     
-    const aqi = weather.airQuality.aqi;
-    const alertsActive = location.alertsEnabled;
-    
-    // If alerts active and AQI good, show as good
-    if (alertsActive && aqi <= 2) return 'excellent';
-    if (aqi === 1) return 'excellent';
-    if (aqi === 2) return 'good';
-    if (aqi === 3) return 'moderate';
-    return 'poor';
+    // Visibility ranges
+    if (vis >= 10) return { status: 'excellent', label: 'Clear' };      // 10+ km
+    if (vis >= 5) return { status: 'good', label: 'Good' };             // 5-10 km
+    if (vis >= 2) return { status: 'moderate', label: 'Hazy' };         // 2-5 km
+    return { status: 'poor', label: 'Foggy' };                          // < 2 km
   };
 
   const healthColors = {
     excellent: 'bg-accent-green/20 border-accent-green/40 text-accent-green',
     good: 'bg-blue-500/20 border-blue-500/40 text-blue-400',
     moderate: 'bg-accent-orange/20 border-accent-orange/40 text-accent-orange',
-    poor: 'bg-accent-red/20 border-accent-red/40 text-accent-red'
+    poor: 'bg-gray-500/20 border-gray-500/40 text-gray-400'
   };
 
-  const healthStatus = getHealthStatus();
+  const visibilityInfo = getVisibilityStatus();
 
   return (
     <motion.div
@@ -147,10 +143,10 @@ const LocationSummaryCard = ({ location, weather, onDelete }) => {
             <span className="text-xs font-mono text-white">{weather.wind.speed} km/h</span>
           </div>
 
-          {/* Health Indicator */}
-          <div className={`flex items-center justify-center px-2 py-1.5 rounded-lg border ${healthColors[healthStatus]}`}>
-            <span className="text-xs font-semibold">
-              {healthStatus === 'excellent' ? '✓' : healthStatus === 'good' ? '○' : healthStatus === 'moderate' ? '!' : '⚠'}
+          {/* Visibility Indicator */}
+          <div className={`flex items-center justify-center px-2 py-1.5 rounded-lg border ${healthColors[visibilityInfo.status]}`}>
+            <span className="text-xs font-semibold whitespace-nowrap">
+              {visibilityInfo.label}
             </span>
           </div>
         </div>
@@ -169,19 +165,20 @@ const LocationSummaryCard = ({ location, weather, onDelete }) => {
         </button>
       </div>
 
-      {/* Alert Status Footer (if alerts enabled) */}
-      {location.alertsEnabled && (
-        <div className="px-4 py-2 bg-dark-elevated border-t border-dark-border">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-              <span className="text-xs text-gray-400">
-                Alerts: {location.minTemp}°C - {location.maxTemp}°C
-              </span>
-            </div>
+          {/* Alert Status Footer - Shows ON or OFF */}
+    <div className="px-4 py-2 bg-dark-elevated border-t border-dark-border">
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-gray-400">Alerts</span>
+        {location.alertsEnabled ? (
+          <div className="flex items-center space-x-2">
+            <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+            <span className="text-xs font-semibold text-primary">ON</span>
           </div>
-        </div>
-      )}
+        ) : (
+          <span className="text-xs font-semibold text-gray-500">OFF</span>
+        )}
+      </div>
+    </div>
     </motion.div>
   );
 };
