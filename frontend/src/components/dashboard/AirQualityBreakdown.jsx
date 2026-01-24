@@ -12,7 +12,7 @@ import { Leaf, AlertTriangle, Info } from 'lucide-react';
  * - Health recommendations
  */
 
-const AirQualityBreakdown = ({ airQuality }) => {
+const AirQualityBreakdown = ({ airQuality, compact = false }) => {
   // If no air quality data
   if (!airQuality || !airQuality.components) {
     return (
@@ -80,6 +80,68 @@ const AirQualityBreakdown = ({ airQuality }) => {
 
   const aqiInfo = getAQIInfo(airQuality.aqi);
   const { components } = airQuality;
+
+  // If compact mode, show summary only
+  if (compact) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+        className="bg-dark-surface border border-dark-border rounded-xl p-4"
+        style={{ minHeight: '320px' }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+            <Leaf className="w-4 h-4 text-primary" />
+            Air Quality
+          </h3>
+          <div className={`px-3 py-1 rounded-lg border text-xs font-bold ${aqiInfo.borderColor} ${aqiInfo.bgColor} ${aqiInfo.color}`}>
+            AQI {airQuality.aqi} • {aqiInfo.label}
+          </div>
+        </div>
+
+        {/* All Pollutants in Compact Mode */}
+        <div className="space-y-3 mb-4">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-gray-400">PM2.5</span>
+            <span className="font-mono text-white">{components.pm25.toFixed(1)} µg/m³</span>
+          </div>
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-gray-400">PM10</span>
+            <span className="font-mono text-white">{components.pm10.toFixed(1)} µg/m³</span>
+          </div>
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-gray-400">O₃ (Ozone)</span>
+            <span className="font-mono text-white">{components.o3.toFixed(1)} µg/m³</span>
+          </div>
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-gray-400">NO₂</span>
+            <span className="font-mono text-white">{components.no2.toFixed(1)} µg/m³</span>
+          </div>
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-gray-400">SO₂</span>
+            <span className="font-mono text-white">{components.so2.toFixed(1)} µg/m³</span>
+          </div>
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-gray-400">CO</span>
+            <span className="font-mono text-white">{components.co.toFixed(1)} µg/m³</span>
+          </div>
+        </div>
+
+        {/* Status */}
+        <div className={`mt-auto p-3 rounded-lg ${aqiInfo.bgColor} border ${aqiInfo.borderColor}`}>
+          <p className={`text-xs font-medium ${aqiInfo.color} mb-1`}>
+            {aqiInfo.description}
+          </p>
+          <p className="text-xs text-gray-300">
+            {aqiInfo.recommendation.substring(0, 80)}...
+          </p>
+        </div>
+      </motion.div>
+    );
+  }
 
   // Pollutant configurations with safe ranges (WHO guidelines)
   const pollutants = [

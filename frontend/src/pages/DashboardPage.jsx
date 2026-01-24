@@ -6,6 +6,8 @@ import QuickStatsBar from '../components/dashboard/QuickStatsBar';
 import WindAnalysis from '../components/dashboard/WindAnalysis';
 import AirQualityBreakdown from '../components/dashboard/AirQualityBreakdown';
 import MetricsGrid from '../components/dashboard/MetricsGrid';
+import TemperatureForecast from '../components/dashboard/TemperatureForecast';
+import HourlyForecast from '../components/dashboard/HourlyForecast';
 
 /**
  * DashboardPage - Full dashboard view for single location
@@ -24,6 +26,7 @@ const DashboardPage = () => {
 
   const [location, setLocation] = useState(null);
   const [weather, setWeather] = useState(null);
+  const [forecast, setForecast] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -63,6 +66,9 @@ const DashboardPage = () => {
       // Load weather data
       const weatherData = await weatherAPI.getWeather(name, country);
 
+      // Load forecast data
+      const forecastData = await weatherAPI.getForecast(name, country);
+
       setLocation({
         locationName: locationSettings.locationName,
         country: locationSettings.country,
@@ -87,6 +93,8 @@ const DashboardPage = () => {
         },
         airQuality: weatherData.airQuality
       });
+
+      setForecast(forecastData);
 
     } catch (err) {
       setError('Failed to load dashboard data');
@@ -171,49 +179,69 @@ const DashboardPage = () => {
       </div>
 
       {/* Main Dashboard Content */}
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="max-w-[1920px] mx-auto px-6 py-6">
         {/* QuickStats Bar */}
         <QuickStatsBar weather={weather} />
 
-        {/* Two Column Layout - Wind + Air Quality */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          {/* Wind Analysis Widget */}
+        {/* Forecast Charts - Full Width at Top */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-4">
+          {/* Temperature Forecast - Full Version */}
+          {forecast && <TemperatureForecast forecast={forecast} />}
+
+          {/* Hourly Forecast - Full Version */}
+          {forecast && <HourlyForecast forecast={forecast} />}
+        </div>
+
+        {/* Detail Widgets Row: Wind + Air Quality + Metrics */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Wind Analysis - Compact */}
           <WindAnalysis wind={weather.wind} />
           
-          {/* Air Quality Breakdown */}
-          <AirQualityBreakdown airQuality={weather.airQuality} />
+          {/* Air Quality - Compact Summary */}
+          <AirQualityBreakdown airQuality={weather.airQuality} compact={true} />
+          
+          {/* Metrics Grid - Compact */}
+          <div className="bg-dark-surface border border-dark-border rounded-xl p-4" style={{ minHeight: '320px' }}>
+            <h3 className="text-sm font-semibold text-white mb-4">Additional Metrics</h3>
+            <div className="space-y-3 mb-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-400">Pressure</span>
+                <span className="text-sm font-mono text-white">{weather.pressure} hPa</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-400">Visibility</span>
+                <span className="text-sm font-mono text-white">{weather.visibility} km</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-400">Temp Range</span>
+                <span className="text-sm font-mono text-white">{weather.tempMin.toFixed(0)}° - {weather.tempMax.toFixed(0)}°</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-400">Feels Like</span>
+                <span className="text-sm font-mono text-white">{weather.feelsLike.toFixed(1)}°C</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-400">Humidity</span>
+                <span className="text-sm font-mono text-white">{weather.humidity}%</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-400">Wind Speed</span>
+                <span className="text-sm font-mono text-white">{weather.wind.speed} km/h</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-400">Wind Direction</span>
+                <span className="text-sm font-mono text-white">{weather.wind.direction}°</span>
+              </div>
+            </div>
+            
+            {/* Current Condition */}
+            <div className="mt-auto pt-4 border-t border-dark-border">
+              <p className="text-xs text-gray-400 mb-1">Current Condition</p>
+              <p className="text-sm text-white capitalize font-medium">{weather.description}</p>
+              <p className="text-xs text-gray-500 mt-2">Last updated: Just now</p>
+            </div>
+          </div>
         </div>
-
-        {/* Additional Metrics Grid */}
-        <MetricsGrid weather={weather} />
-
-        {/* Phase 2.3: Charts need backend work */}
-        <div className="bg-dark-surface border border-dark-border rounded-xl p-12 text-center">
-          <Cloud className="w-20 h-20 text-primary mx-auto mb-6 opacity-50" />
-          <h2 className="text-2xl font-bold text-white mb-3">
-            Forecast Charts Coming Next
-          </h2>
-          <p className="text-gray-400 mb-2 max-w-md mx-auto">
-            The dashboard is looking great! Next step: Add backend forecast API to enable temperature and hourly charts.
-          </p>
-          <p className="text-sm text-gray-500">
-            Phase 2.4: GetForecast backend function + Recharts visualizations
-          </p>
-        </div>
-
-        {/* TODO Phase 2.4: Add forecast widgets (need backend) */}
-        {/* 
-        Backend needed:
-        - Create GetForecast.js Azure Function
-        - Add 7-day daily forecast endpoint
-        - Add 24-hour hourly forecast endpoint
-        
-        Then build:
-        - TemperatureForecast chart (7-day line chart)
-        - HourlyForecast chart (24h bar chart)
-        - PrecipitationChart (rain probability)
-        - SunMoonWidget (sunrise/sunset times)
-        */}
       </div>
     </div>
   );
