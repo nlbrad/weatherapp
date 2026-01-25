@@ -10,6 +10,7 @@ import TemperatureForecast from '../components/dashboard/TemperatureForecast';
 import HourlyForecast from '../components/dashboard/HourlyForecast';
 import SunWidget from '../components/dashboard/SunWidget';
 import MoonWidget from '../components/dashboard/MoonWidget';
+import WeatherMapWidget from '../components/dashboard/WeatherMapWidget';
 
 /**
  * DashboardPage - Full dashboard view for single location
@@ -88,7 +89,9 @@ const DashboardPage = () => {
         pressure: weatherData.weather.pressure,
         condition: weatherData.weather.condition,
         description: weatherData.weather.description,
+        icon: weatherData.weather.icon, // Day/night indicator (e.g., '01d' or '01n')
         visibility: weatherData.weather.visibility || 10,
+        clouds: weatherData.weather.clouds || 0,
         wind: {
           speed: weatherData.wind.speed,
           direction: weatherData.wind.direction
@@ -167,17 +170,19 @@ const DashboardPage = () => {
                   <div className="flex items-center gap-2 px-3 py-1 bg-dark-elevated rounded-lg border border-dark-border">
                     <span className="text-gray-400 text-sm">🕐</span>
                     <span className="text-white font-mono text-lg">
-                      {new Date().toLocaleTimeString('en-IE', { 
+                      {new Date().toLocaleTimeString('en-US', { 
                         hour: '2-digit', 
                         minute: '2-digit',
-                        hour12: false 
+                        hour12: false,
+                        timeZone: forecast?.current?.timezone || 'UTC'
                       })}
                     </span>
                     <span className="text-gray-500 text-xs">
-                      {new Date().toLocaleDateString('en-IE', { 
+                      {new Date().toLocaleDateString('en-US', { 
                         weekday: 'short',
                         day: 'numeric',
-                        month: 'short'
+                        month: 'short',
+                        timeZone: forecast?.current?.timezone || 'UTC'
                       })}
                     </span>
                   </div>
@@ -204,7 +209,24 @@ const DashboardPage = () => {
         {/* QuickStats Bar - Pass forecast for UV Index */}
         <QuickStatsBar weather={weather} forecast={forecast} />
 
-        {/* Forecast Charts - Full Width at Top */}
+        {/* Weather Map + Wind Analysis - Side by Side */}
+        <div className="grid grid-cols-1 xl:grid-cols-4 gap-4 mb-4">
+          {/* Weather Map - Takes 3 columns */}
+          <div className="xl:col-span-3">
+            <WeatherMapWidget 
+              lat={location.latitude || forecast?.location?.lat} 
+              lon={location.longitude || forecast?.location?.lon}
+              locationName={location.locationName}
+            />
+          </div>
+          
+          {/* Wind Analysis - Takes 1 column */}
+          <div className="xl:col-span-1">
+            <WindAnalysis wind={weather.wind} />
+          </div>
+        </div>
+
+        {/* Forecast Charts - Full Width */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-4">
           {/* 24-Hour Forecast - First Position */}
           {forecast && <HourlyForecast forecast={forecast} />}
@@ -213,16 +235,13 @@ const DashboardPage = () => {
           {forecast && <TemperatureForecast forecast={forecast} />}
         </div>
 
-        {/* Detail Widgets Row: Wind + Air Quality + Metrics */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
-          {/* Wind Analysis - Compact */}
-          <WindAnalysis wind={weather.wind} />
-          
+        {/* Bottom Row: Air Quality + Metrics + Sun + Moon */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {/* Air Quality - Compact Summary */}
           <AirQualityBreakdown airQuality={weather.airQuality} compact={true} />
           
           {/* Metrics Grid - Compact */}
-          <div className="bg-dark-surface border border-dark-border rounded-xl p-4" style={{ minHeight: '320px' }}>
+          <div className="bg-dark-surface border border-dark-border rounded-xl p-4">
             <h3 className="text-sm font-semibold text-white mb-4">Additional Metrics</h3>
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -230,7 +249,7 @@ const DashboardPage = () => {
                 <div className="text-right">
                   <span className="text-sm font-mono text-white">{weather.pressure} hPa</span>
                   <p className="text-xs text-gray-500">
-                    {weather.pressure > 1020 ? 'High (fair weather)' : 
+                    {weather.pressure > 1020 ? 'High (fair)' : 
                      weather.pressure < 1010 ? 'Low (unsettled)' : 'Normal'}
                   </p>
                 </div>
@@ -241,8 +260,7 @@ const DashboardPage = () => {
                   <span className="text-sm font-mono text-white">{weather.visibility} km</span>
                   <p className="text-xs text-gray-500">
                     {weather.visibility >= 10 ? 'Excellent' : 
-                     weather.visibility >= 5 ? 'Good' : 
-                     weather.visibility >= 2 ? 'Moderate' : 'Poor'}
+                     weather.visibility >= 5 ? 'Good' : 'Moderate'}
                   </p>
                 </div>
               </div>
@@ -252,10 +270,6 @@ const DashboardPage = () => {
                   <span className="text-sm font-mono text-white">
                     {forecast?.current?.dew_point?.toFixed(1) || 'N/A'}°C
                   </span>
-                  <p className="text-xs text-gray-500">
-                    {(forecast?.current?.dew_point || 0) > 18 ? 'Humid' : 
-                     (forecast?.current?.dew_point || 0) > 10 ? 'Comfortable' : 'Dry'}
-                  </p>
                 </div>
               </div>
               <div className="flex items-center justify-between">
@@ -264,52 +278,17 @@ const DashboardPage = () => {
                   <span className="text-sm font-mono text-white">
                     {weather.tempMin.toFixed(0)}° - {weather.tempMax.toFixed(0)}°
                   </span>
-                  <p className="text-xs text-gray-500">
-                    Δ {(weather.tempMax - weather.tempMin).toFixed(0)}° spread
-                  </p>
                 </div>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">Humidity</span>
-                <div className="text-right">
-                  <span className="text-sm font-mono text-white">{weather.humidity}%</span>
-                  <p className="text-xs text-gray-500">
-                    {weather.humidity > 80 ? 'Very humid' : 
-                     weather.humidity > 60 ? 'Humid' :
-                     weather.humidity > 30 ? 'Comfortable' : 'Dry'}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">Wind Gust</span>
-                <div className="text-right">
-                  <span className="text-sm font-mono text-white">
-                    {weather.wind.gust || weather.wind.speed * 1.3 | 0} km/h
-                  </span>
-                  <p className="text-xs text-gray-500">Max expected</p>
-                </div>
-              </div>
-            </div>
-            
-            {/* Last Updated */}
-            <div className="mt-auto pt-4 border-t border-dark-border">
-              <p className="text-xs text-gray-500">
-                Last updated: {new Date().toLocaleTimeString('en-IE', { 
-                  hour: '2-digit', 
-                  minute: '2-digit' 
-                })}
-              </p>
             </div>
           </div>
-        </div>
 
-        {/* Sun & Moon Widgets - Side by Side */}
-        {forecast && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-            <SunWidget forecast={forecast} />
-            <MoonWidget forecast={forecast} />
-          </div>
-        )}
+          {/* Sun Widget */}
+          {forecast && <SunWidget forecast={forecast} />}
+          
+          {/* Moon Widget */}
+          {forecast && <MoonWidget forecast={forecast} />}
+        </div>
       </div>
     </div>
   );

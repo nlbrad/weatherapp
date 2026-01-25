@@ -1,8 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ComposedChart, Bar } from 'recharts';
-import { Clock, Cloud, Sun, CloudRain, CloudSnow, Droplets } from 'lucide-react';
-import { format } from 'date-fns';
+import { Clock, Cloud, Sun, CloudRain, CloudSnow } from 'lucide-react';
 
 /**
  * HourlyForecast - 24-hour forecast with line chart
@@ -23,18 +22,31 @@ const HourlyForecast = ({ forecast, compact = false }) => {
     );
   }
 
+  // Get timezone from forecast
+  const timezone = forecast.current?.timezone || 'UTC';
+
+  // Helper to format time in location's timezone
+  const formatTimeInZone = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: timezone
+    });
+  };
+
   // Prepare chart data - show every hour for chart, every 3 hours for cards
   const allHourlyData = forecast.hourly.slice(0, 24).map((hour) => {
-    const date = new Date(hour.time);
     return {
-      time: format(date, 'HH:mm'),
-      hour: format(date, 'ha'), // 2pm, 3pm
+      time: formatTimeInZone(hour.time),
       temp: Math.round(hour.temp),
       feelsLike: Math.round(hour.feelsLike),
       condition: hour.condition,
       description: hour.description,
       pop: Math.round(hour.pop * 100),
       rain: hour.rain || 0,
+      snow: hour.snow || 0,
       windSpeed: Math.round(hour.windSpeed),
       humidity: hour.humidity
     };
@@ -122,6 +134,8 @@ const HourlyForecast = ({ forecast, compact = false }) => {
   const maxTemp = Math.max(...temps);
   const minTemp = Math.min(...temps);
   const totalRain = allHourlyData.reduce((sum, d) => sum + d.rain, 0);
+  const totalSnow = allHourlyData.reduce((sum, d) => sum + d.snow, 0);
+  const totalPrecip = totalRain + totalSnow;
 
   // Find peak rain time
   const peakRainHour = allHourlyData.reduce((max, hour) => 
@@ -149,9 +163,9 @@ const HourlyForecast = ({ forecast, compact = false }) => {
             <p className="text-sm font-semibold text-white">
               {minTemp}° - {maxTemp}°C
             </p>
-            {totalRain > 0 && (
+            {totalPrecip > 0 && (
               <p className="text-xs text-blue-400 mt-1">
-                💧 {totalRain.toFixed(1)}mm total
+                {totalSnow > totalRain ? '❄️' : '💧'} {totalPrecip.toFixed(1)}mm total
               </p>
             )}
           </div>
@@ -240,15 +254,21 @@ const HourlyForecast = ({ forecast, compact = false }) => {
                   <p className="text-sm font-bold text-accent-orange">{hour.temp}°</p>
                   <p className="text-xs text-gray-500">Feels {hour.feelsLike}°</p>
                 </div>
-                {(hour.rain > 0 || hour.pop > 30) && (
+                {(hour.rain > 0 || hour.snow > 0 || hour.pop > 30) && (
                   <div className="mt-1">
-                    {hour.rain > 0 ? (
+                    {hour.rain > 0 && (
                       <p className="text-xs text-blue-400 font-semibold">
                         💧 {hour.rain.toFixed(1)}mm
                       </p>
-                    ) : (
-                      <p className="text-xs text-blue-400">
-                        {hour.pop}%
+                    )}
+                    {hour.snow > 0 && (
+                      <p className="text-xs text-blue-200 font-semibold">
+                        ❄️ {hour.snow.toFixed(1)}mm
+                      </p>
+                    )}
+                    {hour.rain === 0 && hour.snow === 0 && hour.pop > 30 && (
+                      <p className="text-xs text-gray-400">
+                        {hour.pop}% chance
                       </p>
                     )}
                   </div>

@@ -1,7 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Sunrise, Sunset, Sun, Clock } from 'lucide-react';
-import { format } from 'date-fns';
 
 /**
  * SunWidget - Sunrise, sunset times with visual sun arc
@@ -24,10 +23,13 @@ const SunWidget = ({ forecast }) => {
   }
 
   const today = forecast.daily[0];
+  const timezone = forecast.current?.timezone || 'UTC';
   
-  // Parse times
+  // Parse times (these are already in UTC from API)
   const sunrise = new Date(today.sunrise);
   const sunset = new Date(today.sunset);
+  
+  // Get current time in the location's timezone
   const now = new Date();
   
   // Calculate day length
@@ -57,6 +59,16 @@ const SunWidget = ({ forecast }) => {
 
   // Calculate solar noon (midpoint between sunrise and sunset)
   const solarNoon = new Date(sunrise.getTime() + dayLengthMs / 2);
+
+  // Helper to format time in location's timezone
+  const formatTimeInZone = (date) => {
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: timezone
+    });
+  };
 
   return (
     <motion.div
@@ -190,7 +202,7 @@ const SunWidget = ({ forecast }) => {
             </div>
             <p className="text-xs text-gray-400 mb-1">Sunrise</p>
             <p className="text-lg font-bold text-white font-mono">
-              {format(sunrise, 'HH:mm')}
+              {formatTimeInZone(sunrise)}
             </p>
           </div>
 
@@ -200,7 +212,7 @@ const SunWidget = ({ forecast }) => {
             </div>
             <p className="text-xs text-gray-400 mb-1">Solar Noon</p>
             <p className="text-lg font-bold text-white font-mono">
-              {format(solarNoon, 'HH:mm')}
+              {formatTimeInZone(solarNoon)}
             </p>
           </div>
 
@@ -210,7 +222,7 @@ const SunWidget = ({ forecast }) => {
             </div>
             <p className="text-xs text-gray-400 mb-1">Sunset</p>
             <p className="text-lg font-bold text-white font-mono">
-              {format(sunset, 'HH:mm')}
+              {formatTimeInZone(sunset)}
             </p>
           </div>
 
@@ -235,7 +247,7 @@ const SunWidget = ({ forecast }) => {
             <div className="text-gray-400">
               <span className="text-gray-500">Golden hour:</span>{' '}
               <span className="text-amber-400 font-mono">
-                {format(sunrise, 'HH:mm')}-{format(goldenMorningEnd, 'HH:mm')}, {format(goldenEveningStart, 'HH:mm')}-{format(sunset, 'HH:mm')}
+                {formatTimeInZone(sunrise)}-{formatTimeInZone(goldenMorningEnd)}, {formatTimeInZone(goldenEveningStart)}-{formatTimeInZone(sunset)}
               </span>
             </div>
           </div>

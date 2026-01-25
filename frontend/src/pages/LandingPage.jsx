@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Cloud, Plus, Loader, Settings as SettingsIcon } from 'lucide-react';
+import { Cloud, Plus, Loader, Settings as SettingsIcon, MapPin } from 'lucide-react';
 import { weatherAPI, locationsAPI, alertsAPI } from '../services/api';
 import LocationSummaryCard from '../components/summary/LocationSummaryCard';
+import LocationSearch from '../components/LocationSearch';
 
 /**
  * LandingPage - Main view with location summary cards
@@ -25,6 +26,8 @@ const LandingPage = () => {
   const [newLocation, setNewLocation] = useState({ 
     name: '', 
     country: '',
+    latitude: null,
+    longitude: null,
     minTemp: 0,
     maxTemp: 30
   });
@@ -61,7 +64,9 @@ const LandingPage = () => {
                 pressure: weatherData.weather.pressure,
                 condition: weatherData.weather.condition,
                 description: weatherData.weather.description,
+                icon: weatherData.weather.icon, // Day/night indicator (e.g., '01d' or '01n')
                 visibility: weatherData.weather.visibility || 10,
+                clouds: weatherData.weather.clouds || 0,
                 wind: {
                   speed: weatherData.wind.speed,
                   direction: weatherData.wind.direction
@@ -86,8 +91,8 @@ const LandingPage = () => {
   };
 
   const addLocation = async () => {
-    if (!newLocation.name || !newLocation.country) {
-      alert('Please enter both city name and country code');
+    if (!newLocation.name) {
+      alert('Please search and select a location');
       return;
     }
 
@@ -98,6 +103,8 @@ const LandingPage = () => {
         userId: userId,
         locationName: newLocation.name,
         country: newLocation.country,
+        latitude: newLocation.latitude,
+        longitude: newLocation.longitude,
         alertsEnabled: true,
         minTemp: parseInt(newLocation.minTemp),
         maxTemp: parseInt(newLocation.maxTemp),
@@ -117,11 +124,18 @@ const LandingPage = () => {
 
   const removeLocation = async (locationToRemove) => {
     if (window.confirm(`Remove ${locationToRemove.locationName}?`)) {
-      // TODO: Add delete API endpoint
-      setLocations(locations.filter(
-        loc => loc.locationName !== locationToRemove.locationName || 
-               loc.country !== locationToRemove.country
-      ));
+      try {
+        await locationsAPI.deleteLocation(userId, locationToRemove.locationName);
+        
+        // Remove from local state after successful delete
+        setLocations(locations.filter(
+          loc => loc.locationName !== locationToRemove.locationName || 
+                 loc.country !== locationToRemove.country
+        ));
+      } catch (error) {
+        console.error('Error deleting location:', error);
+        alert('Failed to delete location. Please try again.');
+      }
     }
   };
 
@@ -204,38 +218,49 @@ const LandingPage = () => {
         {showAddLocation && (
           <div className="bg-dark-surface border border-dark-border rounded-xl p-6 mb-6">
             <h3 className="text-lg font-bold text-white mb-4">Add New Location</h3>
+            
+            {/* Location Search */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-400 mb-2">
+                Search Location
+              </label>
+              <LocationSearch 
+                onSelect={(location) => {
+                  setNewLocation({
+                    ...newLocation,
+                    name: location.name,
+                    country: location.country,
+                    latitude: location.lat,
+                    longitude: location.lon
+                  });
+                }}
+                placeholder="Start typing a city name..."
+              />
+              
+              {/* Selected Location Display */}
+              {newLocation.name && (
+                <div className="mt-3 p-3 bg-dark-elevated border border-primary/30 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-primary" />
+                    <span className="text-white font-medium">{newLocation.name}</span>
+                    {newLocation.country && (
+                      <span className="text-gray-400">, {newLocation.country}</span>
+                    )}
+                  </div>
+                  {newLocation.latitude && (
+                    <p className="text-xs text-gray-500 mt-1 font-mono">
+                      📍 {newLocation.latitude.toFixed(4)}, {newLocation.longitude.toFixed(4)}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Temperature Thresholds */}
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
                 <label className="block text-sm font-medium text-gray-400 mb-2">
-                  City Name
-                </label>
-                <input
-                  type="text"
-                  placeholder="Dublin"
-                  value={newLocation.name}
-                  onChange={(e) => setNewLocation({...newLocation, name: e.target.value})}
-                  className="w-full px-4 py-2 bg-dark-elevated border border-dark-border rounded-lg 
-                           text-white placeholder-gray-500
-                           focus:ring-2 focus:ring-primary focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">
-                  Country Code
-                </label>
-                <input
-                  type="text"
-                  placeholder="IE"
-                  value={newLocation.country}
-                  onChange={(e) => setNewLocation({...newLocation, country: e.target.value})}
-                  className="w-full px-4 py-2 bg-dark-elevated border border-dark-border rounded-lg 
-                           text-white placeholder-gray-500
-                           focus:ring-2 focus:ring-primary focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">
-                  Min Temp (°C)
+                  Min Temp Alert (°C)
                 </label>
                 <input
                   type="number"
@@ -248,7 +273,7 @@ const LandingPage = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-400 mb-2">
-                  Max Temp (°C)
+                  Max Temp Alert (°C)
                 </label>
                 <input
                   type="number"
@@ -260,11 +285,13 @@ const LandingPage = () => {
                 />
               </div>
             </div>
+
+            {/* Action Buttons */}
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => {
                   setShowAddLocation(false);
-                  setNewLocation({ name: '', country: '', minTemp: 0, maxTemp: 30 });
+                  setNewLocation({ name: '', country: '', latitude: null, longitude: null, minTemp: 0, maxTemp: 30 });
                 }}
                 className="px-4 py-2 bg-dark-elevated text-gray-300 rounded-lg 
                          hover:bg-dark-border transition-colors text-sm font-medium"
@@ -273,10 +300,10 @@ const LandingPage = () => {
               </button>
               <button
                 onClick={addLocation}
-                disabled={saving}
+                disabled={saving || !newLocation.name}
                 className="px-4 py-2 bg-primary text-white rounded-lg 
                          hover:bg-primary-dark transition-colors text-sm font-medium
-                         disabled:opacity-50"
+                         disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {saving ? 'Adding...' : 'Add Location'}
               </button>

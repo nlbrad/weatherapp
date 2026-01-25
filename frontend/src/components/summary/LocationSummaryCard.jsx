@@ -10,10 +10,10 @@ import {
   CloudSnow,
   CloudLightning,
   Sun as SunIcon,
+  Moon,
   Wind,
   Droplets
 } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
 
 /**
  * LocationSummaryCard - Compact card for landing page
@@ -21,7 +21,7 @@ import { formatDistanceToNow } from 'date-fns';
  * Shows:
  * - Location name & country
  * - Current temperature & feels like
- * - Weather condition with icon
+ * - Weather condition with icon (day/night aware)
  * - Quick health indicator (air quality + alerts)
  * - Mini wind indicator
  * - "View Dashboard" button
@@ -33,22 +33,36 @@ const LocationSummaryCard = ({ location, weather, onDelete }) => {
   // Generate location ID for routing
   const locationId = `${location.locationName}-${location.country}`.toLowerCase();
 
-  // Get weather icon
+  // Check if it's night based on weather icon (OpenWeather icons end with 'n' for night)
+  const isNight = weather.icon?.endsWith('n') || false;
+
+  // Get weather icon - day/night aware
   const getWeatherIcon = (condition) => {
-    const icons = {
-      'Clear': SunIcon,
-      'Clouds': Cloud,
-      'Rain': CloudRain,
-      'Drizzle': CloudRain,
-      'Snow': CloudSnow,
-      'Thunderstorm': CloudLightning,
-      'Mist': Cloud,
-      'Fog': Cloud,
-    };
-    return icons[condition] || Cloud;
+    const conditionLower = condition?.toLowerCase() || '';
+    
+    if (conditionLower === 'clear') {
+      return isNight ? Moon : SunIcon;
+    }
+    if (conditionLower === 'clouds') return Cloud;
+    if (conditionLower === 'rain' || conditionLower === 'drizzle') return CloudRain;
+    if (conditionLower === 'snow') return CloudSnow;
+    if (conditionLower === 'thunderstorm') return CloudLightning;
+    
+    return Cloud;
+  };
+
+  // Get icon color - day/night aware
+  const getIconColor = (condition) => {
+    const conditionLower = condition?.toLowerCase() || '';
+    
+    if (conditionLower === 'clear') {
+      return isNight ? 'text-blue-300' : 'text-yellow-400';
+    }
+    return 'text-primary';
   };
 
   const WeatherIcon = getWeatherIcon(weather.condition);
+  const iconColor = getIconColor(weather.condition);
 
   // Calculate visibility status (we have this data!)
   const getVisibilityStatus = () => {
@@ -108,7 +122,7 @@ const LocationSummaryCard = ({ location, weather, onDelete }) => {
           {/* Weather Icon & Temp */}
           <div className="flex items-center space-x-4">
             <div className="p-3 bg-dark-elevated rounded-lg border border-dark-border">
-              <WeatherIcon className="w-8 h-8 text-primary" />
+              <WeatherIcon className={`w-8 h-8 ${iconColor}`} />
             </div>
             <div>
               <p className="text-3xl font-bold font-mono text-white">
@@ -165,20 +179,19 @@ const LocationSummaryCard = ({ location, weather, onDelete }) => {
         </button>
       </div>
 
-          {/* Alert Status Footer - Shows ON or OFF */}
-    <div className="px-4 py-2 bg-dark-elevated border-t border-dark-border">
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-gray-400">Alerts</span>
-        {location.alertsEnabled ? (
-          <div className="flex items-center space-x-2">
-            <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-            <span className="text-xs font-semibold text-primary">ON</span>
+      {/* Alert Status Footer (if alerts enabled) */}
+      {location.alertsEnabled && (
+        <div className="px-4 py-2 bg-dark-elevated border-t border-dark-border">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+              <span className="text-xs text-gray-400">
+                Alerts: {location.minTemp}°C - {location.maxTemp}°C
+              </span>
+            </div>
           </div>
-        ) : (
-          <span className="text-xs font-semibold text-gray-500">OFF</span>
-        )}
-      </div>
-    </div>
+        </div>
+      )}
     </motion.div>
   );
 };

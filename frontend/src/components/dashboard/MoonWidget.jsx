@@ -1,7 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Moon, ArrowUp, ArrowDown, Clock } from 'lucide-react';
-import { format } from 'date-fns';
+import { Moon, ArrowUp, ArrowDown } from 'lucide-react';
 
 /**
  * MoonWidget - Moon phase, moonrise/moonset times
@@ -67,6 +66,9 @@ const MoonWidget = ({ forecast }) => {
 
   const moonPhase = getMoonPhase();
   
+  // Get timezone from forecast
+  const timezone = forecast?.current?.timezone || 'UTC';
+  
   // Get moonrise/moonset from forecast if available
   const today = forecast?.daily?.[0];
   const moonrise = today?.moonrise ? new Date(today.moonrise) : null;
@@ -77,6 +79,17 @@ const MoonWidget = ({ forecast }) => {
   const isMoonVisible = moonrise && moonset ? 
     (moonrise < moonset ? (now >= moonrise && now <= moonset) : (now >= moonrise || now <= moonset)) 
     : null;
+
+  // Helper to format time in location's timezone
+  const formatTimeInZone = (date) => {
+    if (!date) return '--:--';
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: timezone
+    });
+  };
 
   return (
     <motion.div
@@ -162,7 +175,7 @@ const MoonWidget = ({ forecast }) => {
                   <p className="text-xs text-gray-400">Moonrise</p>
                 </div>
                 <p className="text-lg font-bold text-white font-mono">
-                  {moonrise ? format(moonrise, 'HH:mm') : '--:--'}
+                  {formatTimeInZone(moonrise)}
                 </p>
               </div>
 
@@ -172,7 +185,7 @@ const MoonWidget = ({ forecast }) => {
                   <p className="text-xs text-gray-400">Moonset</p>
                 </div>
                 <p className="text-lg font-bold text-white font-mono">
-                  {moonset ? format(moonset, 'HH:mm') : '--:--'}
+                  {formatTimeInZone(moonset)}
                 </p>
               </div>
             </div>

@@ -66,19 +66,21 @@ const QuickStatsBar = ({ weather, forecast }) => {
     return { level: 'Extreme', color: 'text-purple-400', bgColor: 'bg-purple-500/20', advice: 'Stay indoors if possible' };
   };
 
-  // Get cloud cover info
+  // Get cloud cover info - day/night aware
   const getCloudInfo = () => {
     const clouds = weather.clouds || forecast?.current?.clouds || 0;
+    const icon = weather.icon || '';
+    const isNight = icon.endsWith('n');
     
-    if (clouds <= 10) return { label: 'Clear', icon: '☀️', color: 'text-yellow-400' };
-    if (clouds <= 25) return { label: 'Mostly Clear', icon: '🌤️', color: 'text-yellow-300' };
-    if (clouds <= 50) return { label: 'Partly Cloudy', icon: '⛅', color: 'text-gray-300' };
+    if (clouds <= 10) return { label: 'Clear', icon: isNight ? '🌙' : '☀️', color: isNight ? 'text-blue-300' : 'text-yellow-400' };
+    if (clouds <= 25) return { label: 'Mostly Clear', icon: isNight ? '🌙' : '🌤️', color: isNight ? 'text-blue-300' : 'text-yellow-300' };
+    if (clouds <= 50) return { label: 'Partly Cloudy', icon: isNight ? '☁️' : '⛅', color: 'text-gray-300' };
     if (clouds <= 75) return { label: 'Mostly Cloudy', icon: '🌥️', color: 'text-gray-400' };
     if (clouds <= 90) return { label: 'Cloudy', icon: '☁️', color: 'text-gray-400' };
     return { label: 'Overcast', icon: '☁️', color: 'text-gray-500' };
   };
 
-  // Get weather icon based on condition
+  // Get weather icon based on condition - day/night aware
   const getWeatherIcon = () => {
     const condition = weather.condition?.toLowerCase() || '';
     const icon = weather.icon || '';
@@ -87,13 +89,92 @@ const QuickStatsBar = ({ weather, forecast }) => {
     const isNight = icon.endsWith('n');
     
     if (condition.includes('clear')) return isNight ? '🌙' : '☀️';
-    if (condition.includes('cloud')) return '☁️';
+    if (condition.includes('cloud')) return isNight ? '☁️' : '⛅';
     if (condition.includes('rain') || condition.includes('drizzle')) return '🌧️';
     if (condition.includes('thunder')) return '⛈️';
     if (condition.includes('snow')) return '❄️';
     if (condition.includes('mist') || condition.includes('fog')) return '🌫️';
     if (condition.includes('haze')) return '😶‍🌫️';
-    return '🌤️';
+    return isNight ? '🌙' : '🌤️';
+  };
+
+  // Get smart "what's next" summary from forecast
+  const getUpcomingWeather = () => {
+    if (!forecast?.hourly || forecast.hourly.length < 6) return null;
+    
+    const currentCondition = weather.condition?.toLowerCase() || '';
+    const upcoming = forecast.hourly.slice(1, 7);
+    
+    // Check for precipitation in upcoming hours
+    const precipHours = upcoming.filter(h => h.pop > 0.3);
+    const hasUpcomingPrecip = precipHours.length > 0;
+    
+    // Check what type of precip is expected
+    const getExpectedPrecipType = () => {
+      const avgTemp = upcoming.reduce((sum, h) => sum + h.temp, 0) / upcoming.length;
+      if (avgTemp <= 0) return 'snow';
+      if (avgTemp <= 2) return 'sleet';
+      return 'rain';
+    };
+    
+    // Check if current condition will continue
+    const isCurrentlySnowing = currentCondition.includes('snow');
+    const isCurrentlyRaining = currentCondition.includes('rain') || currentCondition.includes('drizzle');
+    const isCurrentlyClear = currentCondition.includes('clear');
+    const isCurrentlyCloudy = currentCondition.includes('cloud');
+    
+    // Check when conditions might change
+    const conditionChanges = upcoming.findIndex(h => {
+      const cond = h.condition?.toLowerCase() || '';
+      if (isCurrentlySnowing && !cond.includes('snow')) return true;
+      if (isCurrentlyRaining && !cond.includes('rain') && !cond.includes('drizzle')) return true;
+      if (isCurrentlyClear && !cond.includes('clear')) return true;
+      return false;
+    });
+    
+    // Smart messaging based on current + forecast
+    if (isCurrentlySnowing) {
+      if (conditionChanges === -1 || conditionChanges > 4) {
+        return { text: 'Snow continuing', icon: '❄️' };
+      } else {
+        return { text: `Clearing in ~${conditionChanges * 3}h`, icon: '🌤️' };
+      }
+    }
+    
+    if (isCurrentlyRaining) {
+      if (conditionChanges === -1 || conditionChanges > 4) {
+        return { text: 'Rain continuing', icon: '🌧️' };
+      } else {
+        return { text: `Easing in ~${conditionChanges * 3}h`, icon: '🌤️' };
+      }
+    }
+    
+    if (hasUpcomingPrecip) {
+      const precipType = getExpectedPrecipType();
+      const hoursUntil = upcoming.findIndex(h => h.pop > 0.3) + 1;
+      const precipIcon = precipType === 'snow' ? '❄️' : precipType === 'sleet' ? '🌨️' : '🌧️';
+      return { text: `${precipType.charAt(0).toUpperCase() + precipType.slice(1)} in ~${hoursUntil * 3}h`, icon: precipIcon };
+    }
+    
+    // Temperature trend
+    const tempDiff = upcoming[5]?.temp - weather.temp;
+    if (Math.abs(tempDiff) > 3) {
+      if (tempDiff > 0) {
+        return { text: `Warming to ${Math.round(upcoming[5]?.temp)}°`, icon: '📈' };
+      } else {
+        return { text: `Cooling to ${Math.round(upcoming[5]?.temp)}°`, icon: '📉' };
+      }
+    }
+    
+    if (isCurrentlyClear) {
+      return { text: 'Staying clear', icon: '✨' };
+    }
+    
+    if (isCurrentlyCloudy) {
+      return { text: 'Clouds persisting', icon: '☁️' };
+    }
+    
+    return { text: 'Conditions stable', icon: '→' };
   };
 
   const windChillInfo = getWindChillMessage();
@@ -101,17 +182,21 @@ const QuickStatsBar = ({ weather, forecast }) => {
   const cloudInfo = getCloudInfo();
   const uvValue = forecast?.current?.uvi || forecast?.daily?.[0]?.uvi || 0;
   const cloudValue = weather.clouds || forecast?.current?.clouds || 0;
+  const upcoming = getUpcomingWeather();
+  const todayForecast = forecast?.daily?.[0];
 
-  // All stats in order - Current Conditions first
+  // All stats in order - Current Conditions first (redesigned)
   const allStats = [
     {
       id: 'condition',
-      label: 'Current Conditions',
-      value: weather.condition || 'Unknown',
-      subValue: weather.description || '',
+      label: weather.description || weather.condition,
+      subValue: todayForecast ? `H:${Math.round(todayForecast.tempHigh)}° L:${Math.round(todayForecast.tempLow)}°` : '',
+      extraInfo: upcoming?.text,
+      extraIcon: upcoming?.icon,
       emoji: getWeatherIcon(),
       icon: CloudSun,
-      color: 'text-white'
+      color: 'text-white',
+      isCondition: true
     },
     {
       id: 'temp',
@@ -185,25 +270,45 @@ const QuickStatsBar = ({ weather, forecast }) => {
                        hover:border-primary/30 transition-all duration-300
                        ${stat.bgHighlight || ''}`}
             >
-              <div className="flex items-start justify-between mb-2">
-                <div className={`p-1.5 bg-dark-elevated rounded-lg ${stat.color}`}>
-                  <Icon className="w-4 h-4" />
-                </div>
-                {stat.emoji && (
-                  <span className="text-xl">{stat.emoji}</span>
-                )}
-              </div>
-              
-              <div>
-                <p className="text-xl font-bold font-mono text-white mb-0.5 capitalize truncate">
-                  {stat.value}
-                </p>
-                <p className="text-xs text-gray-400 truncate">{stat.label}</p>
-                <p className="text-xs text-gray-500 truncate">{stat.subValue}</p>
-                {stat.extraInfo && (
-                  <p className={`text-xs mt-0.5 truncate ${stat.extraColor}`}>{stat.extraInfo}</p>
-                )}
-              </div>
+              {stat.isCondition ? (
+                /* Special layout for Current Conditions */
+                <>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-3xl">{stat.emoji}</span>
+                    <p className="text-lg text-white font-semibold capitalize">{stat.label}</p>
+                  </div>
+                  <p className="text-sm text-gray-400 font-mono">{stat.subValue}</p>
+                  {stat.extraInfo && (
+                    <p className="text-xs text-primary mt-2 flex items-center gap-1">
+                      <span>{stat.extraIcon}</span> 
+                      <span>{stat.extraInfo}</span>
+                    </p>
+                  )}
+                </>
+              ) : (
+                /* Standard layout for other stats */
+                <>
+                  <div className="flex items-start justify-between mb-2">
+                    <div className={`p-1.5 bg-dark-elevated rounded-lg ${stat.color}`}>
+                      <Icon className="w-4 h-4" />
+                    </div>
+                    {stat.emoji && (
+                      <span className="text-xl">{stat.emoji}</span>
+                    )}
+                  </div>
+                  
+                  <div>
+                    <p className="text-xl font-bold font-mono text-white mb-0.5 capitalize truncate">
+                      {stat.value}
+                    </p>
+                    <p className="text-xs text-gray-400 truncate">{stat.label}</p>
+                    <p className="text-xs text-gray-500 truncate">{stat.subValue}</p>
+                    {stat.extraInfo && (
+                      <p className={`text-xs mt-0.5 truncate ${stat.extraColor}`}>{stat.extraInfo}</p>
+                    )}
+                  </div>
+                </>
+              )}
             </motion.div>
           );
         })}

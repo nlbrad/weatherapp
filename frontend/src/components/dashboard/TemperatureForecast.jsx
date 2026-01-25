@@ -1,17 +1,17 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { TrendingUp, Cloud, Sun, CloudRain, CloudSnow } from 'lucide-react';
-import { format } from 'date-fns';
+import { Calendar } from 'lucide-react';
 
 /**
- * TemperatureForecast - 7-day temperature line chart
+ * WeeklyForecast - 7-day weather forecast
  * 
  * Features:
  * - High/low temperature lines
  * - Weather condition icons
+ * - Precipitation amounts
  * - Interactive tooltip
- * - Responsive design
+ * - Timezone aware
  */
 
 const TemperatureForecast = ({ forecast, compact = false }) => {
@@ -23,12 +23,32 @@ const TemperatureForecast = ({ forecast, compact = false }) => {
     );
   }
 
+  // Get timezone from forecast
+  const timezone = forecast.current?.timezone || 'UTC';
+
+  // Helper to format date in location's timezone
+  const formatDayInZone = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      weekday: 'short',
+      timeZone: timezone
+    });
+  };
+
+  const formatFullDateInZone = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      timeZone: timezone
+    });
+  };
+
   // Prepare chart data
   const chartData = forecast.daily.map((day) => {
-    const date = new Date(day.date);
     return {
-      date: format(date, 'EEE'), // Mon, Tue, Wed...
-      fullDate: format(date, 'MMM d'), // Jan 23
+      date: formatDayInZone(day.date), // Mon, Tue, Wed...
+      fullDate: formatFullDateInZone(day.date), // Jan 23
       high: Math.round(day.tempHigh),
       low: Math.round(day.tempLow),
       condition: day.condition,
@@ -40,21 +60,25 @@ const TemperatureForecast = ({ forecast, compact = false }) => {
     };
   });
 
-  // Get weather icon component
-  const getWeatherIcon = (condition) => {
-    const iconClass = "w-5 h-5";
-    switch (condition.toLowerCase()) {
+  // Get weather emoji to match hourly forecast style
+  const getWeatherEmoji = (condition) => {
+    switch (condition?.toLowerCase()) {
       case 'clear':
-        return <Sun className={`${iconClass} text-accent-orange`} />;
+        return '☀️';
       case 'clouds':
-        return <Cloud className={`${iconClass} text-gray-400`} />;
+        return '☁️';
       case 'rain':
       case 'drizzle':
-        return <CloudRain className={`${iconClass} text-blue-400`} />;
+        return '🌧️';
       case 'snow':
-        return <CloudSnow className={`${iconClass} text-blue-200`} />;
+        return '❄️';
+      case 'thunderstorm':
+        return '⛈️';
+      case 'mist':
+      case 'fog':
+        return '🌫️';
       default:
-        return <Cloud className={`${iconClass} text-gray-400`} />;
+        return '🌤️';
     }
   };
 
@@ -119,10 +143,10 @@ const TemperatureForecast = ({ forecast, compact = false }) => {
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-primary" />
+              <Calendar className="w-5 h-5 text-primary" />
               7-Day Forecast
             </h3>
-            <p className="text-sm text-gray-400 mt-1">Temperature trends</p>
+            <p className="text-sm text-gray-400 mt-1">Weekly outlook</p>
           </div>
           <div className="text-right">
             <p className="text-xs text-gray-400">Range</p>
@@ -194,8 +218,8 @@ const TemperatureForecast = ({ forecast, compact = false }) => {
               className="bg-dark-elevated border border-dark-border rounded-lg p-3 text-center"
             >
               <p className="text-xs text-gray-400 mb-2">{day.date}</p>
-              <div className="flex justify-center mb-2">
-                {getWeatherIcon(day.condition)}
+              <div className="flex justify-center mb-2 text-lg">
+                {getWeatherEmoji(day.condition)}
               </div>
               <div className="space-y-1">
                 <p className="text-sm font-bold text-accent-orange">{day.high}°</p>
