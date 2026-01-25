@@ -88,7 +88,8 @@ app.http('GetWeather', {
                     condition: weatherData.weather[0].main,
                     description: weatherData.weather[0].description,
                     icon: weatherData.weather[0].icon,
-                    visibility: weatherData.visibility ? weatherData.visibility / 1000 : 10 // Convert meters to km
+                    visibility: weatherData.visibility ? weatherData.visibility / 1000 : 10, // Convert meters to km
+                    clouds: weatherData.clouds?.all || 0 // Cloud cover percentage
                 },
                 wind: {
                     speed: weatherData.wind.speed,

@@ -1,45 +1,84 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { Clock, Droplets } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ComposedChart, Bar } from 'recharts';
+import { Clock, Cloud, Sun, CloudRain, CloudSnow, Droplets } from 'lucide-react';
 import { format } from 'date-fns';
 
 /**
- * HourlyForecast - 24-hour temperature bar chart
+ * HourlyForecast - 24-hour forecast with line chart
  * 
  * Features:
- * - Temperature bars by hour
- * - Precipitation probability overlay
+ * - Temperature line chart (matching 7-day design)
+ * - Rain probability overlay
+ * - Hourly detail cards
  * - Interactive tooltip
- * - Scrollable on mobile
  */
 
 const HourlyForecast = ({ forecast, compact = false }) => {
   if (!forecast || !forecast.hourly) {
     return (
       <div className="bg-dark-surface border border-dark-border rounded-xl p-6">
-        <p className="text-gray-400">Hourly forecast data unavailable</p>
+        <p className="text-gray-400">Hourly forecast unavailable</p>
       </div>
     );
   }
 
-  // Prepare chart data (show every 3 hours for readability)
-  const chartData = forecast.hourly
-    .filter((_, index) => index % 3 === 0) // Every 3 hours
-    .map((hour) => {
-      const time = new Date(hour.time);
-      return {
-        time: format(time, 'HH:mm'), // 14:00
-        hour: format(time, 'ha'), // 2pm
-        temp: Math.round(hour.temp),
-        feelsLike: Math.round(hour.feelsLike),
-        pop: Math.round(hour.pop * 100), // Precipitation probability
-        rain: hour.rain || 0,
-        humidity: hour.humidity,
-        windSpeed: Math.round(hour.windSpeed),
-        condition: hour.condition
-      };
-    });
+  // Prepare chart data - show every hour for chart, every 3 hours for cards
+  const allHourlyData = forecast.hourly.slice(0, 24).map((hour) => {
+    const date = new Date(hour.time);
+    return {
+      time: format(date, 'HH:mm'),
+      hour: format(date, 'ha'), // 2pm, 3pm
+      temp: Math.round(hour.temp),
+      feelsLike: Math.round(hour.feelsLike),
+      condition: hour.condition,
+      description: hour.description,
+      pop: Math.round(hour.pop * 100),
+      rain: hour.rain || 0,
+      windSpeed: Math.round(hour.windSpeed),
+      humidity: hour.humidity
+    };
+  });
+
+  // Use every 3rd hour for the chart (8 data points for readability)
+  const chartData = allHourlyData.filter((_, index) => index % 3 === 0);
+
+  // Get weather icon component
+  const getWeatherIcon = (condition) => {
+    const iconClass = "w-5 h-5";
+    switch (condition?.toLowerCase()) {
+      case 'clear':
+        return <Sun className={`${iconClass} text-accent-orange`} />;
+      case 'clouds':
+        return <Cloud className={`${iconClass} text-gray-400`} />;
+      case 'rain':
+      case 'drizzle':
+        return <CloudRain className={`${iconClass} text-blue-400`} />;
+      case 'snow':
+        return <CloudSnow className={`${iconClass} text-blue-200`} />;
+      default:
+        return <Cloud className={`${iconClass} text-gray-400`} />;
+    }
+  };
+
+  // Get weather emoji
+  const getWeatherEmoji = (condition) => {
+    switch (condition?.toLowerCase()) {
+      case 'clear':
+        return '☀️';
+      case 'clouds':
+        return '☁️';
+      case 'rain':
+      case 'drizzle':
+        return '🌧️';
+      case 'snow':
+        return '❄️';
+      case 'thunderstorm':
+        return '⛈️';
+      default:
+        return '🌤️';
+    }
+  };
 
   // Custom tooltip
   const CustomTooltip = ({ active, payload }) => {
@@ -50,21 +89,21 @@ const HourlyForecast = ({ forecast, compact = false }) => {
           <p className="text-white font-semibold mb-2">{data.time}</p>
           <div className="space-y-1 text-sm">
             <div className="flex items-center justify-between gap-4">
-              <span className="text-gray-400">Temp:</span>
+              <span className="text-accent-orange">Temp:</span>
               <span className="text-white font-mono">{data.temp}°C</span>
             </div>
             <div className="flex items-center justify-between gap-4">
-              <span className="text-gray-400">Feels:</span>
+              <span className="text-gray-400">Feels like:</span>
               <span className="text-white font-mono">{data.feelsLike}°C</span>
             </div>
             <div className="flex items-center justify-between gap-4">
-              <span className="text-gray-400">Rain:</span>
+              <span className="text-blue-400">Rain:</span>
               <span className="text-white font-mono">{data.pop}%</span>
             </div>
             {data.rain > 0 && (
               <div className="flex items-center justify-between gap-4">
-                <span className="text-gray-400">Amount:</span>
-                <span className="text-white font-mono">{data.rain.toFixed(1)}mm</span>
+                <span className="text-blue-400">Amount:</span>
+                <span className="text-white font-mono font-bold">{data.rain.toFixed(1)}mm</span>
               </div>
             )}
             <div className="flex items-center justify-between gap-4">
@@ -78,20 +117,21 @@ const HourlyForecast = ({ forecast, compact = false }) => {
     return null;
   };
 
-  // Get temperature range
-  const temps = chartData.map(d => d.temp);
+  // Calculate stats
+  const temps = allHourlyData.map(d => d.temp);
   const maxTemp = Math.max(...temps);
   const minTemp = Math.min(...temps);
+  const totalRain = allHourlyData.reduce((sum, d) => sum + d.rain, 0);
 
   // Find peak rain time
-  const maxRain = Math.max(...chartData.map(d => d.pop));
-  const peakRainTime = chartData.find(d => d.pop === maxRain);
+  const peakRainHour = allHourlyData.reduce((max, hour) => 
+    hour.pop > max.pop ? hour : max, allHourlyData[0]);
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.5 }}
+      transition={{ delay: 0.3 }}
       className="bg-dark-surface border border-dark-border rounded-xl overflow-hidden"
     >
       {/* Header */}
@@ -102,19 +142,17 @@ const HourlyForecast = ({ forecast, compact = false }) => {
               <Clock className="w-5 h-5 text-primary" />
               24-Hour Forecast
             </h3>
-            <p className="text-sm text-gray-400 mt-1">Temperature by hour</p>
+            <p className="text-sm text-gray-400 mt-1">Hourly breakdown</p>
           </div>
           <div className="text-right">
-            {maxRain > 30 && (
-              <div className="flex items-center gap-2 text-blue-400">
-                <Droplets className="w-4 h-4" />
-                <div>
-                  <p className="text-xs text-gray-400">Peak rain</p>
-                  <p className="text-sm font-semibold">
-                    {peakRainTime?.hour} ({maxRain}%)
-                  </p>
-                </div>
-              </div>
+            <p className="text-xs text-gray-400">Range</p>
+            <p className="text-sm font-semibold text-white">
+              {minTemp}° - {maxTemp}°C
+            </p>
+            {totalRain > 0 && (
+              <p className="text-xs text-blue-400 mt-1">
+                💧 {totalRain.toFixed(1)}mm total
+              </p>
             )}
           </div>
         </div>
@@ -124,10 +162,10 @@ const HourlyForecast = ({ forecast, compact = false }) => {
       <div className={compact ? "p-4" : "p-6"}>
         <div style={{ width: '100%', height: compact ? '200px' : '300px' }}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData}>
+            <ComposedChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
               <XAxis 
-                dataKey="hour" 
+                dataKey="time" 
                 stroke="#666"
                 style={{ fontSize: compact ? '10px' : '12px' }}
               />
@@ -139,7 +177,7 @@ const HourlyForecast = ({ forecast, compact = false }) => {
                 tickFormatter={(value) => `${value}°`}
               />
               <YAxis 
-                yAxisId="pop"
+                yAxisId="rain"
                 orientation="right"
                 stroke="#60a5fa"
                 style={{ fontSize: compact ? '10px' : '12px' }}
@@ -151,51 +189,77 @@ const HourlyForecast = ({ forecast, compact = false }) => {
                 wrapperStyle={{ paddingTop: '10px' }}
               />
               <Bar 
-                yAxisId="temp"
-                dataKey="temp" 
-                fill="#f97316" 
-                radius={[4, 4, 0, 0]}
-                name="Temperature (°C)"
-              />
-              <Bar 
-                yAxisId="pop"
+                yAxisId="rain"
                 dataKey="pop" 
-                fill="#60a5fa" 
+                fill="#60a5fa"
+                opacity={0.3}
+                name="Rain %"
                 radius={[4, 4, 0, 0]}
-                opacity={0.6}
-                name="Rain Chance (%)"
               />
-            </BarChart>
+              <Line 
+                yAxisId="temp"
+                type="monotone" 
+                dataKey="temp" 
+                stroke="#f97316" 
+                strokeWidth={3}
+                dot={{ fill: '#f97316', r: 4 }}
+                activeDot={{ r: 6 }}
+                name="Temp"
+              />
+              <Line 
+                yAxisId="temp"
+                type="monotone" 
+                dataKey="feelsLike" 
+                stroke="#f97316" 
+                strokeWidth={2}
+                strokeDasharray="5 5"
+                dot={false}
+                name="Feels Like"
+                opacity={0.5}
+              />
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
 
-        {/* Summary Stats - Hide in compact mode */}
+        {/* Hourly Details - Hide in compact mode */}
         {!compact && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
-            <div className="bg-dark-elevated border border-dark-border rounded-lg p-3">
-            <p className="text-xs text-gray-400 mb-1">Avg Temp</p>
-            <p className="text-lg font-bold text-white">
-              {Math.round(temps.reduce((a, b) => a + b) / temps.length)}°C
-            </p>
-          </div>
-          <div className="bg-dark-elevated border border-dark-border rounded-lg p-3">
-            <p className="text-xs text-gray-400 mb-1">High/Low</p>
-            <p className="text-lg font-bold text-white">
-              {maxTemp}° / {minTemp}°
-            </p>
-          </div>
-          <div className="bg-dark-elevated border border-dark-border rounded-lg p-3">
-            <p className="text-xs text-gray-400 mb-1">Max Rain</p>
-            <p className="text-lg font-bold text-blue-400">
-              {maxRain}%
-            </p>
-          </div>
-          <div className="bg-dark-elevated border border-dark-border rounded-lg p-3">
-            <p className="text-xs text-gray-400 mb-1">Avg Wind</p>
-            <p className="text-lg font-bold text-accent-green">
-              {Math.round(chartData.reduce((a, b) => a + b.windSpeed, 0) / chartData.length)} km/h
-            </p>
-          </div>
+          <div className="grid grid-cols-8 gap-2 mt-6">
+            {chartData.map((hour, index) => (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.05 * index }}
+                className="bg-dark-elevated border border-dark-border rounded-lg p-3 text-center"
+              >
+                <p className="text-xs text-gray-400 mb-2">{hour.time}</p>
+                <div className="flex justify-center mb-2 text-lg">
+                  {getWeatherEmoji(hour.condition)}
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-bold text-accent-orange">{hour.temp}°</p>
+                  <p className="text-xs text-gray-500">Feels {hour.feelsLike}°</p>
+                </div>
+                {(hour.rain > 0 || hour.pop > 30) && (
+                  <div className="mt-1">
+                    {hour.rain > 0 ? (
+                      <p className="text-xs text-blue-400 font-semibold">
+                        💧 {hour.rain.toFixed(1)}mm
+                      </p>
+                    ) : (
+                      <p className="text-xs text-blue-400">
+                        {hour.pop}%
+                      </p>
+                    )}
+                  </div>
+                )}
+                {hour.windSpeed > 20 && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    💨 {hour.windSpeed}
+                  </p>
+                )}
+              </motion.div>
+            ))}
           </div>
         )}
       </div>

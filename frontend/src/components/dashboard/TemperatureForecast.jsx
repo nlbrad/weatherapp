@@ -34,6 +34,8 @@ const TemperatureForecast = ({ forecast, compact = false }) => {
       condition: day.condition,
       icon: day.icon,
       pop: Math.round(day.pop * 100), // Precipitation probability
+      rain: day.rain || 0, // Rainfall in mm
+      snow: day.snow || 0, // Snowfall in mm
       humidity: day.humidity
     };
   });
@@ -60,6 +62,8 @@ const TemperatureForecast = ({ forecast, compact = false }) => {
   const CustomTooltip = ({ active, payload }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
+      const totalPrecip = data.rain + data.snow;
+      
       return (
         <div className="bg-dark-elevated border border-dark-border rounded-lg p-3 shadow-lg">
           <p className="text-white font-semibold mb-2">{data.fullDate}</p>
@@ -73,9 +77,15 @@ const TemperatureForecast = ({ forecast, compact = false }) => {
               <span className="text-white font-mono">{data.low}°C</span>
             </div>
             <div className="flex items-center justify-between gap-4">
-              <span className="text-gray-400">Rain:</span>
+              <span className="text-gray-400">Rain Chance:</span>
               <span className="text-white font-mono">{data.pop}%</span>
             </div>
+            {totalPrecip > 0 && (
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-blue-400">Rainfall:</span>
+                <span className="text-white font-mono font-bold">{totalPrecip.toFixed(1)}mm</span>
+              </div>
+            )}
             <div className="flex items-center justify-between gap-4">
               <span className="text-gray-400">Humidity:</span>
               <span className="text-white font-mono">{data.humidity}%</span>
@@ -91,6 +101,11 @@ const TemperatureForecast = ({ forecast, compact = false }) => {
   const allTemps = chartData.flatMap(d => [d.high, d.low]);
   const maxTemp = Math.max(...allTemps);
   const minTemp = Math.min(...allTemps);
+  
+  // Calculate total precipitation
+  const totalRain = chartData.reduce((sum, d) => sum + (d.rain || 0), 0);
+  const totalSnow = chartData.reduce((sum, d) => sum + (d.snow || 0), 0);
+  const totalPrecip = totalRain + totalSnow;
 
   return (
     <motion.div
@@ -114,6 +129,11 @@ const TemperatureForecast = ({ forecast, compact = false }) => {
             <p className="text-sm font-semibold text-white">
               {minTemp}° - {maxTemp}°C
             </p>
+            {totalPrecip > 0 && (
+              <p className="text-xs text-blue-400 mt-1">
+                {totalSnow > 0 ? '❄️' : '💧'} {totalPrecip.toFixed(1)}mm total
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -181,10 +201,24 @@ const TemperatureForecast = ({ forecast, compact = false }) => {
                 <p className="text-sm font-bold text-accent-orange">{day.high}°</p>
                 <p className="text-xs text-blue-400">{day.low}°</p>
               </div>
-              {day.pop > 30 && (
-                <p className="text-xs text-blue-400 mt-1">
-                  💧 {day.pop}%
-                </p>
+              {(day.rain > 0 || day.snow > 0 || day.pop > 30) && (
+                <div className="mt-1">
+                  {day.rain > 0 && (
+                    <p className="text-xs text-blue-400 font-semibold">
+                      💧 {day.rain.toFixed(1)}mm
+                    </p>
+                  )}
+                  {day.snow > 0 && (
+                    <p className="text-xs text-blue-200 font-semibold">
+                      ❄️ {day.snow.toFixed(1)}mm
+                    </p>
+                  )}
+                  {day.rain === 0 && day.snow === 0 && day.pop > 30 && (
+                    <p className="text-xs text-gray-400">
+                      {day.pop}% rain
+                    </p>
+                  )}
+                </div>
               )}
             </motion.div>
           ))}

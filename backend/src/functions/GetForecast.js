@@ -107,7 +107,10 @@ app.http('GetForecast', {
                 snow: day.snow || 0,
                 uvi: day.uvi, // UV index
                 sunrise: new Date(day.sunrise * 1000).toISOString(),
-                sunset: new Date(day.sunset * 1000).toISOString()
+                sunset: new Date(day.sunset * 1000).toISOString(),
+                moonrise: day.moonrise ? new Date(day.moonrise * 1000).toISOString() : null,
+                moonset: day.moonset ? new Date(day.moonset * 1000).toISOString() : null,
+                moonPhase: day.moon_phase // 0-1 where 0=new, 0.5=full, 1=new
             }));
 
             // Process hourly forecast (24 hours)
@@ -130,12 +133,15 @@ app.http('GetForecast', {
                 visibility: hour.visibility ? hour.visibility / 1000 : 10 // Convert to km
             }));
 
-            // Current conditions (for sunrise/sunset)
+            // Current conditions (for sunrise/sunset and additional metrics)
             const current = {
                 sunrise: new Date(data.current.sunrise * 1000).toISOString(),
                 sunset: new Date(data.current.sunset * 1000).toISOString(),
                 timezone: data.timezone,
-                timezoneOffset: data.timezone_offset
+                timezoneOffset: data.timezone_offset,
+                dew_point: data.current.dew_point,
+                clouds: data.current.clouds,
+                uvi: data.current.uvi
             };
 
             const result = {

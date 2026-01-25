@@ -8,6 +8,8 @@ import AirQualityBreakdown from '../components/dashboard/AirQualityBreakdown';
 import MetricsGrid from '../components/dashboard/MetricsGrid';
 import TemperatureForecast from '../components/dashboard/TemperatureForecast';
 import HourlyForecast from '../components/dashboard/HourlyForecast';
+import SunWidget from '../components/dashboard/SunWidget';
+import MoonWidget from '../components/dashboard/MoonWidget';
 
 /**
  * DashboardPage - Full dashboard view for single location
@@ -158,9 +160,28 @@ const DashboardPage = () => {
                   <span>/</span>
                   <span className="text-white">{location.locationName}</span>
                 </div>
-                <h1 className="text-2xl font-bold text-white">
-                  {location.locationName}, {location.country}
-                </h1>
+                <div className="flex items-center gap-4">
+                  <h1 className="text-2xl font-bold text-white">
+                    {location.locationName}, {location.country}
+                  </h1>
+                  <div className="flex items-center gap-2 px-3 py-1 bg-dark-elevated rounded-lg border border-dark-border">
+                    <span className="text-gray-400 text-sm">🕐</span>
+                    <span className="text-white font-mono text-lg">
+                      {new Date().toLocaleTimeString('en-IE', { 
+                        hour: '2-digit', 
+                        minute: '2-digit',
+                        hour12: false 
+                      })}
+                    </span>
+                    <span className="text-gray-500 text-xs">
+                      {new Date().toLocaleDateString('en-IE', { 
+                        weekday: 'short',
+                        day: 'numeric',
+                        month: 'short'
+                      })}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -180,20 +201,20 @@ const DashboardPage = () => {
 
       {/* Main Dashboard Content */}
       <div className="max-w-[1920px] mx-auto px-6 py-6">
-        {/* QuickStats Bar */}
-        <QuickStatsBar weather={weather} />
+        {/* QuickStats Bar - Pass forecast for UV Index */}
+        <QuickStatsBar weather={weather} forecast={forecast} />
 
         {/* Forecast Charts - Full Width at Top */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-4">
-          {/* Temperature Forecast - Full Version */}
-          {forecast && <TemperatureForecast forecast={forecast} />}
-
-          {/* Hourly Forecast - Full Version */}
+          {/* 24-Hour Forecast - First Position */}
           {forecast && <HourlyForecast forecast={forecast} />}
+
+          {/* 7-Day Temperature Forecast - Second Position */}
+          {forecast && <TemperatureForecast forecast={forecast} />}
         </div>
 
         {/* Detail Widgets Row: Wind + Air Quality + Metrics */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
           {/* Wind Analysis - Compact */}
           <WindAnalysis wind={weather.wind} />
           
@@ -203,45 +224,92 @@ const DashboardPage = () => {
           {/* Metrics Grid - Compact */}
           <div className="bg-dark-surface border border-dark-border rounded-xl p-4" style={{ minHeight: '320px' }}>
             <h3 className="text-sm font-semibold text-white mb-4">Additional Metrics</h3>
-            <div className="space-y-3 mb-4">
+            <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-gray-400">Pressure</span>
-                <span className="text-sm font-mono text-white">{weather.pressure} hPa</span>
+                <div className="text-right">
+                  <span className="text-sm font-mono text-white">{weather.pressure} hPa</span>
+                  <p className="text-xs text-gray-500">
+                    {weather.pressure > 1020 ? 'High (fair weather)' : 
+                     weather.pressure < 1010 ? 'Low (unsettled)' : 'Normal'}
+                  </p>
+                </div>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-xs text-gray-400">Visibility</span>
-                <span className="text-sm font-mono text-white">{weather.visibility} km</span>
+                <div className="text-right">
+                  <span className="text-sm font-mono text-white">{weather.visibility} km</span>
+                  <p className="text-xs text-gray-500">
+                    {weather.visibility >= 10 ? 'Excellent' : 
+                     weather.visibility >= 5 ? 'Good' : 
+                     weather.visibility >= 2 ? 'Moderate' : 'Poor'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-400">Dew Point</span>
+                <div className="text-right">
+                  <span className="text-sm font-mono text-white">
+                    {forecast?.current?.dew_point?.toFixed(1) || 'N/A'}°C
+                  </span>
+                  <p className="text-xs text-gray-500">
+                    {(forecast?.current?.dew_point || 0) > 18 ? 'Humid' : 
+                     (forecast?.current?.dew_point || 0) > 10 ? 'Comfortable' : 'Dry'}
+                  </p>
+                </div>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-xs text-gray-400">Temp Range</span>
-                <span className="text-sm font-mono text-white">{weather.tempMin.toFixed(0)}° - {weather.tempMax.toFixed(0)}°</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">Feels Like</span>
-                <span className="text-sm font-mono text-white">{weather.feelsLike.toFixed(1)}°C</span>
+                <div className="text-right">
+                  <span className="text-sm font-mono text-white">
+                    {weather.tempMin.toFixed(0)}° - {weather.tempMax.toFixed(0)}°
+                  </span>
+                  <p className="text-xs text-gray-500">
+                    Δ {(weather.tempMax - weather.tempMin).toFixed(0)}° spread
+                  </p>
+                </div>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-xs text-gray-400">Humidity</span>
-                <span className="text-sm font-mono text-white">{weather.humidity}%</span>
+                <div className="text-right">
+                  <span className="text-sm font-mono text-white">{weather.humidity}%</span>
+                  <p className="text-xs text-gray-500">
+                    {weather.humidity > 80 ? 'Very humid' : 
+                     weather.humidity > 60 ? 'Humid' :
+                     weather.humidity > 30 ? 'Comfortable' : 'Dry'}
+                  </p>
+                </div>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">Wind Speed</span>
-                <span className="text-sm font-mono text-white">{weather.wind.speed} km/h</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">Wind Direction</span>
-                <span className="text-sm font-mono text-white">{weather.wind.direction}°</span>
+                <span className="text-xs text-gray-400">Wind Gust</span>
+                <div className="text-right">
+                  <span className="text-sm font-mono text-white">
+                    {weather.wind.gust || weather.wind.speed * 1.3 | 0} km/h
+                  </span>
+                  <p className="text-xs text-gray-500">Max expected</p>
+                </div>
               </div>
             </div>
             
-            {/* Current Condition */}
+            {/* Last Updated */}
             <div className="mt-auto pt-4 border-t border-dark-border">
-              <p className="text-xs text-gray-400 mb-1">Current Condition</p>
-              <p className="text-sm text-white capitalize font-medium">{weather.description}</p>
-              <p className="text-xs text-gray-500 mt-2">Last updated: Just now</p>
+              <p className="text-xs text-gray-500">
+                Last updated: {new Date().toLocaleTimeString('en-IE', { 
+                  hour: '2-digit', 
+                  minute: '2-digit' 
+                })}
+              </p>
             </div>
           </div>
         </div>
+
+        {/* Sun & Moon Widgets - Side by Side */}
+        {forecast && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+            <SunWidget forecast={forecast} />
+            <MoonWidget forecast={forecast} />
+          </div>
+        )}
       </div>
     </div>
   );
