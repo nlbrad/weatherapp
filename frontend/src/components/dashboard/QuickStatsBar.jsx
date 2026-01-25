@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Thermometer, Droplets, Wind, Leaf, Sun, Cloud, CloudSun } from 'lucide-react';
+import { Thermometer, Droplets, Sun, Cloud, CloudSun, Gauge } from 'lucide-react';
 
 /**
  * QuickStatsBar - Top row of key metrics on dashboard
@@ -55,8 +55,16 @@ const QuickStatsBar = ({ weather, forecast }) => {
     return 'text-accent-red';
   };
 
-  // Get UV index info
+  // Check if it's night
+  const isNight = weather.icon?.endsWith('n') || false;
+
+  // Get UV index info - 0 at night since there's no sun
   const getUVInfo = () => {
+    // UV is always 0 at night
+    if (isNight) {
+      return { level: 'None', color: 'text-gray-500', bgColor: 'bg-gray-500/10', advice: 'No UV at night' };
+    }
+    
     const uvi = forecast?.current?.uvi || forecast?.daily?.[0]?.uvi || 0;
     
     if (uvi <= 2) return { level: 'Low', color: 'text-green-400', bgColor: 'bg-green-500/20', advice: 'No protection needed' };
@@ -69,8 +77,6 @@ const QuickStatsBar = ({ weather, forecast }) => {
   // Get cloud cover info - day/night aware
   const getCloudInfo = () => {
     const clouds = weather.clouds || forecast?.current?.clouds || 0;
-    const icon = weather.icon || '';
-    const isNight = icon.endsWith('n');
     
     if (clouds <= 10) return { label: 'Clear', icon: isNight ? '🌙' : '☀️', color: isNight ? 'text-blue-300' : 'text-yellow-400' };
     if (clouds <= 25) return { label: 'Mostly Clear', icon: isNight ? '🌙' : '🌤️', color: isNight ? 'text-blue-300' : 'text-yellow-300' };
@@ -180,10 +186,20 @@ const QuickStatsBar = ({ weather, forecast }) => {
   const windChillInfo = getWindChillMessage();
   const uvInfo = getUVInfo();
   const cloudInfo = getCloudInfo();
-  const uvValue = forecast?.current?.uvi || forecast?.daily?.[0]?.uvi || 0;
+  const uvValue = isNight ? 0 : (forecast?.current?.uvi || forecast?.daily?.[0]?.uvi || 0);
   const cloudValue = weather.clouds || forecast?.current?.clouds || 0;
   const upcoming = getUpcomingWeather();
   const todayForecast = forecast?.daily?.[0];
+
+  // Get visibility label
+  const getVisibilityLabel = () => {
+    const vis = weather.visibility || 10;
+    if (vis >= 10) return 'Clear';
+    if (vis >= 5) return 'Good';
+    if (vis >= 2) return 'Moderate';
+    if (vis >= 1) return 'Poor';
+    return 'Very Poor';
+  };
 
   // All stats in order - Current Conditions first (redesigned)
   const allStats = [
@@ -193,6 +209,7 @@ const QuickStatsBar = ({ weather, forecast }) => {
       subValue: todayForecast ? `H:${Math.round(todayForecast.tempHigh)}° L:${Math.round(todayForecast.tempLow)}°` : '',
       extraInfo: upcoming?.text,
       extraIcon: upcoming?.icon,
+      visibilityInfo: `👁 ${weather.visibility || 10}km ${getVisibilityLabel()}`,
       emoji: getWeatherIcon(),
       icon: CloudSun,
       color: 'text-white',
@@ -203,10 +220,12 @@ const QuickStatsBar = ({ weather, forecast }) => {
       label: 'Temperature',
       value: `${weather.temp.toFixed(1)}°`,
       subValue: `Feels ${weather.feelsLike.toFixed(1)}°`,
+      dewPoint: forecast?.current?.dew_point ? `${forecast.current.dew_point.toFixed(0)}°` : null,
       extraInfo: windChillInfo.message,
       extraColor: windChillInfo.color,
       icon: Thermometer,
-      color: 'text-accent-orange'
+      color: 'text-accent-orange',
+      isTemp: true
     },
     {
       id: 'humidity',
@@ -217,20 +236,14 @@ const QuickStatsBar = ({ weather, forecast }) => {
       color: 'text-blue-400'
     },
     {
-      id: 'wind',
-      label: 'Wind Speed',
-      value: `${weather.wind.speed} km/h`,
-      subValue: getWindDirection(weather.wind.direction),
-      icon: Wind,
-      color: 'text-accent-green'
-    },
-    {
-      id: 'air',
-      label: 'Air Quality',
-      value: getAirQualityLabel(),
-      subValue: weather.airQuality ? `AQI ${weather.airQuality.aqi}` : 'No data',
-      icon: Leaf,
-      color: getAirQualityColor()
+      id: 'pressure',
+      label: 'Pressure',
+      value: `${weather.pressure}`,
+      subValue: weather.pressure > 1020 ? 'High (fair)' : weather.pressure < 1010 ? 'Low (unsettled)' : 'Normal',
+      extraInfo: 'hPa',
+      extraColor: 'text-gray-500',
+      icon: Gauge,
+      color: weather.pressure > 1020 ? 'text-green-400' : weather.pressure < 1010 ? 'text-yellow-400' : 'text-gray-400'
     },
     {
       id: 'uv',
@@ -256,8 +269,8 @@ const QuickStatsBar = ({ weather, forecast }) => {
 
   return (
     <div className="mb-6">
-      {/* All Stats in One Row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+      {/* All Stats in One Row - 6 widgets */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         {allStats.map((stat, index) => {
           const Icon = stat.icon;
           return (
@@ -277,12 +290,36 @@ const QuickStatsBar = ({ weather, forecast }) => {
                     <span className="text-3xl">{stat.emoji}</span>
                     <p className="text-lg text-white font-semibold capitalize">{stat.label}</p>
                   </div>
-                  <p className="text-sm text-gray-400 font-mono">{stat.subValue}</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-gray-400 font-mono">{stat.subValue}</p>
+                    <p className="text-xs text-gray-500">{stat.visibilityInfo}</p>
+                  </div>
                   {stat.extraInfo && (
                     <p className="text-xs text-primary mt-2 flex items-center gap-1">
                       <span>{stat.extraIcon}</span> 
                       <span>{stat.extraInfo}</span>
                     </p>
+                  )}
+                </>
+              ) : stat.isTemp ? (
+                /* Special layout for Temperature */
+                <>
+                  <div className="flex items-start justify-between mb-1">
+                    <div className={`p-1.5 bg-dark-elevated rounded-lg ${stat.color}`}>
+                      <Icon className="w-4 h-4" />
+                    </div>
+                    {stat.dewPoint && (
+                      <span className="text-xs text-gray-500">
+                        Dew <span className="text-gray-400 font-mono">{stat.dewPoint}</span>
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xl font-bold font-mono text-white mb-0.5">
+                    {stat.value}
+                  </p>
+                  <p className="text-xs text-gray-400">{stat.subValue}</p>
+                  {stat.extraInfo && (
+                    <p className={`text-xs mt-1 truncate ${stat.extraColor}`}>{stat.extraInfo}</p>
                   )}
                 </>
               ) : (
@@ -316,15 +353,5 @@ const QuickStatsBar = ({ weather, forecast }) => {
     </div>
   );
 };
-
-// Helper function for wind direction
-function getWindDirection(degrees) {
-  if (degrees === undefined || degrees === null) return 'Unknown';
-  
-  const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 
-                      'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
-  const index = Math.round(degrees / 22.5) % 16;
-  return `${directions[index]} (${degrees}°)`;
-}
 
 export default QuickStatsBar;

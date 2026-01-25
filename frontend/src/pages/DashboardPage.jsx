@@ -11,6 +11,7 @@ import HourlyForecast from '../components/dashboard/HourlyForecast';
 import SunWidget from '../components/dashboard/SunWidget';
 import MoonWidget from '../components/dashboard/MoonWidget';
 import WeatherMapWidget from '../components/dashboard/WeatherMapWidget';
+import WeatherAlertBanner from '../components/dashboard/WeatherAlertBanner';
 
 /**
  * DashboardPage - Full dashboard view for single location
@@ -206,6 +207,14 @@ const DashboardPage = () => {
 
       {/* Main Dashboard Content */}
       <div className="max-w-[1920px] mx-auto px-6 py-6">
+        {/* Weather Alerts - Show if any active */}
+        {forecast?.alerts && forecast.alerts.length > 0 && (
+          <WeatherAlertBanner 
+            alerts={forecast.alerts} 
+            timezone={forecast?.current?.timezone}
+          />
+        )}
+
         {/* QuickStats Bar - Pass forecast for UV Index */}
         <QuickStatsBar weather={weather} forecast={forecast} />
 
@@ -235,53 +244,10 @@ const DashboardPage = () => {
           {forecast && <TemperatureForecast forecast={forecast} />}
         </div>
 
-        {/* Bottom Row: Air Quality + Metrics + Sun + Moon */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        {/* Bottom Row: Air Quality + Sun + Moon */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Air Quality - Compact Summary */}
           <AirQualityBreakdown airQuality={weather.airQuality} compact={true} />
-          
-          {/* Metrics Grid - Compact */}
-          <div className="bg-dark-surface border border-dark-border rounded-xl p-4">
-            <h3 className="text-sm font-semibold text-white mb-4">Additional Metrics</h3>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">Pressure</span>
-                <div className="text-right">
-                  <span className="text-sm font-mono text-white">{weather.pressure} hPa</span>
-                  <p className="text-xs text-gray-500">
-                    {weather.pressure > 1020 ? 'High (fair)' : 
-                     weather.pressure < 1010 ? 'Low (unsettled)' : 'Normal'}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">Visibility</span>
-                <div className="text-right">
-                  <span className="text-sm font-mono text-white">{weather.visibility} km</span>
-                  <p className="text-xs text-gray-500">
-                    {weather.visibility >= 10 ? 'Excellent' : 
-                     weather.visibility >= 5 ? 'Good' : 'Moderate'}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">Dew Point</span>
-                <div className="text-right">
-                  <span className="text-sm font-mono text-white">
-                    {forecast?.current?.dew_point?.toFixed(1) || 'N/A'}°C
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">Temp Range</span>
-                <div className="text-right">
-                  <span className="text-sm font-mono text-white">
-                    {weather.tempMin.toFixed(0)}° - {weather.tempMax.toFixed(0)}°
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
 
           {/* Sun Widget */}
           {forecast && <SunWidget forecast={forecast} />}

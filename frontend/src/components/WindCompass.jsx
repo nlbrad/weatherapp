@@ -96,10 +96,12 @@ const WindCompass = ({
         </svg>
 
         {/* Large rotating arrow - extends beyond circle */}
+        {/* Arrow points the direction wind is BLOWING TO */}
+        {/* Wind direction 90° (E) means wind FROM East, blowing TO West, so arrow points West */}
         <motion.div
           className="absolute inset-0 flex items-center justify-center"
           initial={{ rotate: 0 }}
-          animate={{ rotate: direction + 180 }} // Reversed to show wind source
+          animate={{ rotate: direction + 180 }} // +180 to show where wind blows TO
           transition={{ duration: 0.8, ease: "easeOut" }}
         >
           <svg width="70%" height="70%" viewBox="0 0 100 100">
@@ -143,13 +145,9 @@ const WindCompass = ({
           <p className="text-lg font-bold font-mono text-white">
             {speed.toFixed(1)} <span className="text-sm text-gray-400">km/h</span>
           </p>
-          <p className="text-xs">
-            <span className="font-bold text-cyan-400">
-              {getCompassDirection(direction)}
-            </span>
-            <span className="text-gray-500 ml-1">
-              ({direction}°)
-            </span>
+          <p className="text-xs text-gray-500">
+            from <span className="font-bold text-cyan-400">{getCompassDirection(direction)}</span>
+            <span className="ml-1">({direction}°)</span>
           </p>
         </div>
       </div>

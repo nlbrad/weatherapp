@@ -74,7 +74,7 @@ app.http('GetForecast', {
             const { lat, lon, name, country: countryCode } = geoResponse.data[0];
 
             // Fetch forecast data using One Call API 3.0
-            const forecastUrl = `https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&exclude=minutely,alerts&units=metric&appid=${apiKey}`;
+            const forecastUrl = `https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&exclude=minutely&units=metric&appid=${apiKey}`;
             const forecastResponse = await axios.get(forecastUrl);
             const data = forecastResponse.data;
 
@@ -144,6 +144,16 @@ app.http('GetForecast', {
                 uvi: data.current.uvi
             };
 
+            // Get alerts if available
+            const alerts = data.alerts ? data.alerts.map(alert => ({
+                event: alert.event,
+                sender: alert.sender_name,
+                start: new Date(alert.start * 1000).toISOString(),
+                end: new Date(alert.end * 1000).toISOString(),
+                description: alert.description,
+                tags: alert.tags || []
+            })) : [];
+
             const result = {
                 location: {
                     name: name,
@@ -154,6 +164,7 @@ app.http('GetForecast', {
                 current: current,
                 daily: daily,
                 hourly: hourly,
+                alerts: alerts,
                 timestamp: new Date().toISOString()
             };
 
