@@ -423,33 +423,6 @@ const LandingPage = () => {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-400 mb-2">
-                        Min Temp Alert (°C)
-                      </label>
-                      <input
-                        type="number"
-                        value={newLocation.minTemp}
-                        onChange={(e) => setNewLocation({...newLocation, minTemp: e.target.value})}
-                        className="w-full px-4 py-2 bg-dark-elevated border border-dark-border rounded-lg 
-                                 text-white focus:ring-2 focus:ring-primary focus:border-transparent"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-400 mb-2">
-                        Max Temp Alert (°C)
-                      </label>
-                      <input
-                        type="number"
-                        value={newLocation.maxTemp}
-                        onChange={(e) => setNewLocation({...newLocation, maxTemp: e.target.value})}
-                        className="w-full px-4 py-2 bg-dark-elevated border border-dark-border rounded-lg 
-                                 text-white focus:ring-2 focus:ring-primary focus:border-transparent"
-                      />
-                    </div>
-                  </div>
-
                   <div className="flex justify-end gap-3 pt-4">
                     <button
                       onClick={() => {
