@@ -696,8 +696,8 @@ const LandingPage = () => {
                       </p>
                       {heroLocation.forecast?.daily?.[0] && (
                         <p className="text-white/60 mt-1">
-                          H: {Math.round(heroLocation.forecast.daily[0].tempHigh)}° 
-                          L: {Math.round(heroLocation.forecast.daily[0].tempLow)}°
+                          H: {Math.round(heroLocation.forecast.daily[0].tempMax)}° 
+                          L: {Math.round(heroLocation.forecast.daily[0].tempMin)}°
                         </p>
                       )}
                     </div>

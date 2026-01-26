@@ -126,7 +126,7 @@ const WeatherMapWidget = ({ lat, lon, locationName }) => {
       </div>
 
       {/* Map Container */}
-      <div className={`relative ${isExpanded ? 'h-[calc(100%-140px)]' : 'h-[400px]'}`}>
+      <div className={`relative ${isExpanded ? 'h-[calc(100%-140px)]' : 'h-[500px]'}`}>
         {/* Loading Overlay */}
         {isLoading && (
           <div className="absolute inset-0 bg-dark-elevated flex items-center justify-center z-10">
@@ -150,21 +150,21 @@ const WeatherMapWidget = ({ lat, lon, locationName }) => {
           allow="geolocation"
         />
 
-        {/* Coordinates Badge */}
+{/*         Coordinates Badge
         <div className="absolute bottom-4 left-4 px-3 py-1.5 bg-dark-bg/80 backdrop-blur-sm 
                       rounded-lg border border-dark-border">
           <p className="text-xs text-gray-400 font-mono">
             📍 {latitude.toFixed(4)}, {longitude.toFixed(4)}
           </p>
-        </div>
+        </div> */}
 
         {/* Powered by Windy Badge */}
-        <div className="absolute bottom-4 right-4 px-3 py-1.5 bg-dark-bg/80 backdrop-blur-sm 
+        {/* <div className="absolute bottom-4 right-4 px-3 py-1.5 bg-dark-bg/80 backdrop-blur-sm 
                       rounded-lg border border-dark-border">
           <p className="text-xs text-gray-500">
             Powered by <span className="text-primary">Windy.com</span>
           </p>
-        </div>
+        </div> */}
       </div>
 
       {/* Expanded Mode: Close Button */}
