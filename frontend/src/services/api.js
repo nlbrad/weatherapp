@@ -2,34 +2,75 @@
  * API Service - Weather Alert System
  * 
  * All API calls to the backend
- * Updated with location search and geocoding
+ * Updated with:
+ * - Combined weather endpoint (GetWeatherData)
+ * - Lat/lon support for reliable lookups
  */
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://weather-alert-backend-cxc6ghhhagd7dgb8.westeurope-01.azurewebsites.net/api';
 
 // Weather API
 export const weatherAPI = {
-  getWeather: async (city, country = '') => {
-    const url = country 
-      ? `${API_BASE_URL}/getweather?city=${encodeURIComponent(city)}&country=${encodeURIComponent(country)}`
-      : `${API_BASE_URL}/getweather?city=${encodeURIComponent(city)}`;
+  /**
+   * Get ALL weather data in a single call (preferred method)
+   * Returns: current, hourly, daily, airQuality, alerts
+   */
+  getWeatherData: async (lat, lon) => {
+    if (!lat || !lon || isNaN(parseFloat(lat)) || isNaN(parseFloat(lon))) {
+      throw new Error('Valid lat/lon coordinates required');
+    }
+    
+    const url = `${API_BASE_URL}/GetWeatherData?lat=${lat}&lon=${lon}`;
+    console.log('🌐 Weather API (combined):', url);
+    
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Failed to fetch weather data');
+    return response.json();
+  },
+
+  // Legacy: Get weather - supports city/country OR lat/lon
+  getWeather: async (city, country = '', lat = null, lon = null) => {
+    let url;
+    
+    const hasValidCoords = lat && lon && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lon));
+    
+    if (hasValidCoords) {
+      url = `${API_BASE_URL}/getweather?lat=${lat}&lon=${lon}`;
+      if (city) url += `&city=${encodeURIComponent(city)}`;
+      if (country) url += `&country=${encodeURIComponent(country)}`;
+    } else {
+      url = country 
+        ? `${API_BASE_URL}/getweather?city=${encodeURIComponent(city)}&country=${encodeURIComponent(country)}`
+        : `${API_BASE_URL}/getweather?city=${encodeURIComponent(city)}`;
+    }
     
     const response = await fetch(url);
     if (!response.ok) throw new Error('Failed to fetch weather');
     return response.json();
   },
 
-  getForecast: async (city, country = '') => {
-    const url = country 
-      ? `${API_BASE_URL}/getforecast?city=${encodeURIComponent(city)}&country=${encodeURIComponent(country)}`
-      : `${API_BASE_URL}/getforecast?city=${encodeURIComponent(city)}`;
+  // Legacy: Get forecast - supports city/country OR lat/lon
+  getForecast: async (city, country = '', lat = null, lon = null) => {
+    let url;
+    
+    const hasValidCoords = lat && lon && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lon));
+    
+    if (hasValidCoords) {
+      url = `${API_BASE_URL}/getforecast?lat=${lat}&lon=${lon}`;
+      if (city) url += `&city=${encodeURIComponent(city)}`;
+      if (country) url += `&country=${encodeURIComponent(country)}`;
+    } else {
+      url = country 
+        ? `${API_BASE_URL}/getforecast?city=${encodeURIComponent(city)}&country=${encodeURIComponent(country)}`
+        : `${API_BASE_URL}/getforecast?city=${encodeURIComponent(city)}`;
+    }
     
     const response = await fetch(url);
     if (!response.ok) throw new Error('Failed to fetch forecast');
     return response.json();
   },
 
-  // NEW: Search locations with autocomplete
+  // Search locations with autocomplete
   searchLocations: async (query, limit = 6) => {
     if (!query || query.length < 2) return { locations: [] };
     
@@ -49,7 +90,6 @@ export const locationsAPI = {
     return response.json();
   },
 
-  // Alias for compatibility
   getUserLocations: async (userId) => {
     const url = `${API_BASE_URL}/getuserlocations?userId=${encodeURIComponent(userId)}`;
     const response = await fetch(url);
@@ -57,7 +97,6 @@ export const locationsAPI = {
     return response.json();
   },
 
-  // UPDATED: Now accepts lat/lon
   saveLocation: async (locationData) => {
     const response = await fetch(`${API_BASE_URL}/saveuserlocation`, {
       method: 'POST',

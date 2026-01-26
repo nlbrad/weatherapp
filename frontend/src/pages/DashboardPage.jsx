@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Loader, Cloud } from 'lucide-react';
-import { weatherAPI, locationsAPI } from '../services/api';
+import { locationsAPI } from '../services/api';
+import weatherCache from '../services/weatherCache';
 import QuickStatsBar from '../components/dashboard/QuickStatsBar';
 import WindAnalysis from '../components/dashboard/WindAnalysis';
 import AirQualityBreakdown from '../components/dashboard/AirQualityBreakdown';
@@ -16,8 +17,11 @@ import WeatherAlertBanner from '../components/dashboard/WeatherAlertBanner';
 /**
  * DashboardPage - Full dashboard view for single location
  * 
- * Phase 2.2: Empty shell with basic layout
- * Phase 2.3: Will add widgets (charts, gauges, etc.)
+ * OPTIMIZED VERSION:
+ * - Uses weatherCache for smart caching (10 min TTL)
+ * - Single API call (GetWeatherData) instead of multiple
+ * - Background refresh for stale data
+ * - Auto-refresh every 10 minutes
  * 
  * Route: /dashboard/:locationId
  * Example: /dashboard/dublin-ie
@@ -29,10 +33,11 @@ const DashboardPage = () => {
   const userId = 'user123'; // TODO: Replace with real auth
 
   const [location, setLocation] = useState(null);
-  const [weather, setWeather] = useState(null);
-  const [forecast, setForecast] = useState(null);
+  const [weatherData, setWeatherData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   // Parse locationId (format: "dublin-ie")
   const parseLocationId = (id) => {
@@ -44,18 +49,19 @@ const DashboardPage = () => {
     return { name, country };
   };
 
-  useEffect(() => {
-    loadDashboard();
-  }, [locationId]);
-
-  const loadDashboard = async () => {
+  // Load dashboard data
+  const loadDashboard = useCallback(async (forceRefresh = false) => {
     try {
-      setLoading(true);
+      if (forceRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       setError(null);
 
       const { name, country } = parseLocationId(locationId);
 
-      // Load location settings
+      // Load location settings from database
       const locationsData = await locationsAPI.getUserLocations(userId);
       const locationSettings = locationsData.locations.find(
         loc => loc.locationName.toLowerCase() === name.toLowerCase() && 
@@ -67,48 +73,53 @@ const DashboardPage = () => {
         return;
       }
 
-      // Load weather data
-      const weatherData = await weatherAPI.getWeather(name, country);
+      if (!locationSettings.latitude || !locationSettings.longitude) {
+        setError('Location missing coordinates. Please delete and re-add this location.');
+        return;
+      }
 
-      // Load forecast data
-      const forecastData = await weatherAPI.getForecast(name, country);
+      // Get weather data from cache (or fetch if needed)
+      const data = await weatherCache.get(
+        locationSettings.latitude,
+        locationSettings.longitude,
+        { forceRefresh }
+      );
 
       setLocation({
         locationName: locationSettings.locationName,
         country: locationSettings.country,
+        latitude: locationSettings.latitude,
+        longitude: locationSettings.longitude,
         alertsEnabled: locationSettings.alertsEnabled,
         minTemp: locationSettings.minTemp,
         maxTemp: locationSettings.maxTemp,
       });
 
-      setWeather({
-        temp: weatherData.weather.temp,
-        feelsLike: weatherData.weather.feelsLike,
-        tempMin: weatherData.weather.tempMin,
-        tempMax: weatherData.weather.tempMax,
-        humidity: weatherData.weather.humidity,
-        pressure: weatherData.weather.pressure,
-        condition: weatherData.weather.condition,
-        description: weatherData.weather.description,
-        icon: weatherData.weather.icon, // Day/night indicator (e.g., '01d' or '01n')
-        visibility: weatherData.weather.visibility || 10,
-        clouds: weatherData.weather.clouds || 0,
-        wind: {
-          speed: weatherData.wind.speed,
-          direction: weatherData.wind.direction
-        },
-        airQuality: weatherData.airQuality
-      });
-
-      setForecast(forecastData);
+      setWeatherData(data);
+      setLastUpdated(new Date(data.fetchedAt));
 
     } catch (err) {
       setError('Failed to load dashboard data');
       console.error('Error loading dashboard:', err);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
+  }, [locationId, userId]);
+
+  // Initial load
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
+
+  // Auto-refresh every 10 minutes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      console.log('⏰ Auto-refreshing dashboard...');
+      loadDashboard(true);
+    }, 10 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [loadDashboard]);
 
   // Loading state
   if (loading) {
@@ -123,7 +134,7 @@ const DashboardPage = () => {
   }
 
   // Error state
-  if (error || !location || !weather) {
+  if (error || !location || !weatherData) {
     return (
       <div className="min-h-screen bg-dark-bg flex items-center justify-center">
         <div className="text-center">
@@ -142,6 +153,68 @@ const DashboardPage = () => {
       </div>
     );
   }
+
+  // Transform weatherData to the format components expect
+  const weather = {
+    temp: weatherData.current.temp,
+    feelsLike: weatherData.current.feelsLike,
+    humidity: weatherData.current.humidity,
+    pressure: weatherData.current.pressure,
+    condition: weatherData.current.condition,
+    description: weatherData.current.description,
+    icon: weatherData.current.icon,
+    visibility: (weatherData.current.visibility || 10000) / 1000,
+    clouds: weatherData.current.clouds || 0,
+    wind: {
+      speed: weatherData.current.windSpeed || 0,
+      direction: weatherData.current.windDeg || 0,
+      gust: weatherData.current.windGust || 0
+    },
+    airQuality: weatherData.airQuality
+  };
+
+  const forecast = {
+    current: {
+      timezone: weatherData.timezone,
+      sunrise: weatherData.current.sunrise,
+      sunset: weatherData.current.sunset,
+    },
+    // Transform hourly data - dt is already ISO string, rename to time
+    hourly: weatherData.hourly.map(h => ({
+      time: h.dt, // Already ISO string from API
+      temp: h.temp,
+      feelsLike: h.feelsLike,
+      humidity: h.humidity,
+      pop: h.pop,
+      rain: h.rain,
+      snow: h.snow,
+      condition: h.condition,
+      description: h.description,
+      icon: h.icon,
+      windSpeed: h.windSpeed
+    })),
+    // Transform daily data - dt is already ISO string, rename fields
+    daily: weatherData.daily.map(d => ({
+      date: d.dt, // Already ISO string from API
+      tempHigh: d.tempMax,
+      tempLow: d.tempMin,
+      humidity: d.humidity,
+      pop: d.pop,
+      rain: d.rain,
+      snow: d.snow,
+      condition: d.condition,
+      description: d.description,
+      icon: d.icon,
+      uvi: d.uvi,
+      sunrise: d.sunrise,
+      sunset: d.sunset,
+      moonrise: d.moonrise,
+      moonset: d.moonset,
+      moonPhase: d.moonPhase
+    })),
+    alerts: weatherData.alerts || [],
+    location: { lat: location.latitude, lon: location.longitude }
+  };
 
   return (
     <div className="min-h-screen bg-dark-bg">
@@ -193,12 +266,19 @@ const DashboardPage = () => {
 
             {/* Actions */}
             <div className="flex items-center gap-3">
+              {lastUpdated && (
+                <span className="text-xs text-gray-500">
+                  Updated {Math.round((Date.now() - lastUpdated.getTime()) / 60000)} min ago
+                </span>
+              )}
               <button
-                onClick={loadDashboard}
+                onClick={() => loadDashboard(true)}
+                disabled={refreshing}
                 className="px-4 py-2 bg-dark-elevated text-gray-300 rounded-lg 
-                         hover:bg-dark-border transition-colors text-sm font-medium"
+                         hover:bg-dark-border transition-colors text-sm font-medium
+                         disabled:opacity-50"
               >
-                Refresh
+                {refreshing ? 'Refreshing...' : 'Refresh'}
               </button>
             </div>
           </div>
@@ -223,8 +303,8 @@ const DashboardPage = () => {
           {/* Weather Map - Takes 3 columns */}
           <div className="xl:col-span-3">
             <WeatherMapWidget 
-              lat={location.latitude || forecast?.location?.lat} 
-              lon={location.longitude || forecast?.location?.lon}
+              lat={location.latitude} 
+              lon={location.longitude}
               locationName={location.locationName}
             />
           </div>
@@ -238,10 +318,10 @@ const DashboardPage = () => {
         {/* Forecast Charts - Full Width */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-4">
           {/* 24-Hour Forecast - First Position */}
-          {forecast && <HourlyForecast forecast={forecast} />}
+          <HourlyForecast forecast={forecast} />
 
           {/* 7-Day Temperature Forecast - Second Position */}
-          {forecast && <TemperatureForecast forecast={forecast} />}
+          <TemperatureForecast forecast={forecast} />
         </div>
 
         {/* Bottom Row: Air Quality + Sun + Moon */}
@@ -250,10 +330,10 @@ const DashboardPage = () => {
           <AirQualityBreakdown airQuality={weather.airQuality} compact={true} />
 
           {/* Sun Widget */}
-          {forecast && <SunWidget forecast={forecast} />}
+          <SunWidget forecast={forecast} />
           
           {/* Moon Widget */}
-          {forecast && <MoonWidget forecast={forecast} />}
+          <MoonWidget forecast={forecast} />
         </div>
       </div>
     </div>

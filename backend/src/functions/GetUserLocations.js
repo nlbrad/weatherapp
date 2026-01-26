@@ -48,6 +48,8 @@ app.http('GetUserLocations', {
                 locations.push({
                     locationName: entity.locationName,
                     country: entity.country,
+                    latitude: entity.latitude,
+                    longitude: entity.longitude,
                     alertsEnabled: entity.alertsEnabled,
                     minTemp: entity.minTemp,
                     maxTemp: entity.maxTemp,

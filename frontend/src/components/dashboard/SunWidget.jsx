@@ -186,11 +186,11 @@ const SunWidget = ({ forecast }) => {
               </g>
             )}
             
-            {/* Sunrise marker */}
-            <text x="20" y="105" fontSize="10" fill="#f97316" textAnchor="middle">🌅</text>
+            {/* Sunrise marker - East */}
+            <text x="20" y="105" fontSize="9" fill="#888" textAnchor="middle" fontWeight="500">E</text>
             
-            {/* Sunset marker */}
-            <text x="180" y="105" fontSize="10" fill="#f97316" textAnchor="middle">🌇</text>
+            {/* Sunset marker - West */}
+            <text x="180" y="105" fontSize="9" fill="#888" textAnchor="middle" fontWeight="500">W</text>
           </svg>
         </div>
 

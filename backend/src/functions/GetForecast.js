@@ -6,11 +6,13 @@ const axios = require('axios');
  * 
  * Endpoints:
  * GET /api/getforecast?city=Dublin&country=IE
+ * GET /api/getforecast?lat=53.35&lon=-6.26 (preferred - more reliable)
  * 
  * Returns:
  * - 7-day daily forecast (high/low temps, conditions)
  * - 24-hour hourly forecast (temp, conditions, precipitation)
  * - Sunrise/sunset times
+ * - Weather alerts
  */
 
 app.http('GetForecast', {
@@ -32,46 +34,86 @@ app.http('GetForecast', {
         context.log('GetForecast function triggered');
 
         try {
-            let city, country;
+            let city, country, lat, lon;
             
             // Get parameters from query string or body
             if (request.method === 'GET') {
                 city = request.query.get('city');
                 country = request.query.get('country');
+                lat = request.query.get('lat');
+                lon = request.query.get('lon');
             } else {
                 const body = await request.json();
                 city = body.city;
                 country = body.country;
+                lat = body.lat;
+                lon = body.lon;
             }
 
-            if (!city) {
+            const apiKey = process.env.OPENWEATHER_API_KEY;
+            let name, countryCode;
+
+            // Parse lat/lon as floats (they come as strings from query params)
+            const latFloat = lat ? parseFloat(lat) : null;
+            const lonFloat = lon ? parseFloat(lon) : null;
+
+            context.log(`Received params - city: ${city}, country: ${country}, lat: ${lat}, lon: ${lon}`);
+            context.log(`Parsed coords - latFloat: ${latFloat}, lonFloat: ${lonFloat}`);
+
+            // If lat/lon provided and valid, use directly (more reliable)
+            if (latFloat && lonFloat && !isNaN(latFloat) && !isNaN(lonFloat)) {
+                context.log(`✅ Using coordinates: ${latFloat}, ${lonFloat}`);
+                lat = latFloat;
+                lon = lonFloat;
+                
+                // Reverse geocode to get location name
+                try {
+                    const reverseGeoUrl = `http://api.openweathermap.org/geo/1.0/reverse?lat=${lat}&lon=${lon}&limit=1&appid=${apiKey}`;
+                    const reverseGeoResponse = await axios.get(reverseGeoUrl);
+                    if (reverseGeoResponse.data && reverseGeoResponse.data.length > 0) {
+                        name = reverseGeoResponse.data[0].name;
+                        countryCode = reverseGeoResponse.data[0].country;
+                    } else {
+                        name = city || 'Unknown';
+                        countryCode = country || '';
+                    }
+                } catch (e) {
+                    context.warn('Reverse geocoding failed:', e.message);
+                    name = city || 'Unknown';
+                    countryCode = country || '';
+                }
+            } else if (city) {
+                // Fall back to city name lookup
+                const location = country ? `${city},${country}` : city;
+                context.log(`Using city name: ${location}`);
+
+                // Get coordinates from geocoding API
+                const geoUrl = `http://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(location)}&limit=1&appid=${apiKey}`;
+                const geoResponse = await axios.get(geoUrl);
+                
+                if (!geoResponse.data || geoResponse.data.length === 0) {
+                    return {
+                        status: 404,
+                        headers: {
+                            'Access-Control-Allow-Origin': '*',
+                        },
+                        body: JSON.stringify({ error: 'Location not found' })
+                    };
+                }
+
+                lat = geoResponse.data[0].lat;
+                lon = geoResponse.data[0].lon;
+                name = geoResponse.data[0].name;
+                countryCode = geoResponse.data[0].country;
+            } else {
                 return {
                     status: 400,
                     headers: {
                         'Access-Control-Allow-Origin': '*',
                     },
-                    body: JSON.stringify({ error: 'City parameter is required' })
+                    body: JSON.stringify({ error: 'City or coordinates (lat/lon) required' })
                 };
             }
-
-            const apiKey = process.env.OPENWEATHER_API_KEY;
-            const location = country ? `${city},${country}` : city;
-
-            // First, get coordinates from geocoding API
-            const geoUrl = `http://api.openweathermap.org/geo/1.0/direct?q=${location}&limit=1&appid=${apiKey}`;
-            const geoResponse = await axios.get(geoUrl);
-            
-            if (!geoResponse.data || geoResponse.data.length === 0) {
-                return {
-                    status: 404,
-                    headers: {
-                        'Access-Control-Allow-Origin': '*',
-                    },
-                    body: JSON.stringify({ error: 'Location not found' })
-                };
-            }
-
-            const { lat, lon, name, country: countryCode } = geoResponse.data[0];
 
             // Fetch forecast data using One Call API 3.0
             const forecastUrl = `https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&exclude=minutely&units=metric&appid=${apiKey}`;

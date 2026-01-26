@@ -20,33 +20,44 @@ app.http('GetWeather', {
         context.log('GetWeather function triggered');
 
         try {
-            let city, country;
+            let city, country, lat, lon;
             
             // Get parameters from query string or body
             if (request.method === 'GET') {
                 city = request.query.get('city');
                 country = request.query.get('country');
+                lat = request.query.get('lat');
+                lon = request.query.get('lon');
             } else {
                 const body = await request.json();
                 city = body.city;
                 country = body.country;
+                lat = body.lat;
+                lon = body.lon;
             }
 
-            if (!city) {
+            const apiKey = process.env.OPENWEATHER_API_KEY;
+            let weatherUrl;
+
+            // Prefer lat/lon if provided (more reliable)
+            if (lat && lon) {
+                context.log(`Using coordinates: ${lat}, ${lon}`);
+                weatherUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric`;
+            } else if (city) {
+                const location = country ? `${city},${country}` : city;
+                context.log(`Using city name: ${location}`);
+                weatherUrl = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(location)}&appid=${apiKey}&units=metric`;
+            } else {
                 return {
                     status: 400,
                     headers: {
                         'Access-Control-Allow-Origin': '*',
                     },
-                    body: JSON.stringify({ error: 'City parameter is required' })
+                    body: JSON.stringify({ error: 'City or coordinates (lat/lon) required' })
                 };
             }
-
-            const apiKey = process.env.OPENWEATHER_API_KEY;
-            const location = country ? `${city},${country}` : city;
             
             // Fetch weather data
-            const weatherUrl = `https://api.openweathermap.org/data/2.5/weather?q=${location}&appid=${apiKey}&units=metric`;
             const weatherResponse = await axios.get(weatherUrl);
             const weatherData = weatherResponse.data;
 
@@ -76,7 +87,9 @@ app.http('GetWeather', {
             const result = {
                 location: {
                     name: weatherData.name,
-                    country: weatherData.sys.country
+                    country: weatherData.sys.country,
+                    lat: weatherData.coord.lat,
+                    lon: weatherData.coord.lon
                 },
                 weather: {
                     temp: weatherData.main.temp,

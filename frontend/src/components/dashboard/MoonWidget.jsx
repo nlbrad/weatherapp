@@ -80,6 +80,31 @@ const MoonWidget = ({ forecast }) => {
     (moonrise < moonset ? (now >= moonrise && now <= moonset) : (now >= moonrise || now <= moonset)) 
     : null;
 
+  // Calculate approximate moon rise/set directions
+  // Moon rises in the east (varies between NE and SE) and sets in the west (varies between NW and SW)
+  // This is a simplified approximation based on lunar cycle
+  const getMoonDirection = (isRising) => {
+    // The moon's rising/setting azimuth varies throughout the lunar month
+    // Full moon rises around ESE, sets WSW
+    // New moon behavior is similar to sun
+    const phase = moonPhase.phase;
+    
+    if (isRising) {
+      // Moonrise directions (eastern horizon)
+      const directions = ['E', 'ENE', 'ENE', 'E', 'ESE', 'ESE', 'E', 'ENE'];
+      const azimuths = ['90°', '67°', '67°', '90°', '112°', '112°', '90°', '67°'];
+      return { dir: directions[phase], azimuth: azimuths[phase] };
+    } else {
+      // Moonset directions (western horizon)
+      const directions = ['W', 'WNW', 'WNW', 'W', 'WSW', 'WSW', 'W', 'WNW'];
+      const azimuths = ['270°', '293°', '293°', '270°', '248°', '248°', '270°', '293°'];
+      return { dir: directions[phase], azimuth: azimuths[phase] };
+    }
+  };
+
+  const moonriseDir = getMoonDirection(true);
+  const moonsetDir = getMoonDirection(false);
+
   // Helper to format time in location's timezone
   const formatTimeInZone = (date) => {
     if (!date) return '--:--';
@@ -170,23 +195,31 @@ const MoonWidget = ({ forecast }) => {
             {/* Moonrise/Moonset times */}
             <div className="grid grid-cols-2 gap-3 mb-4">
               <div className="bg-dark-elevated border border-dark-border rounded-lg p-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <ArrowUp className="w-4 h-4 text-blue-400" />
-                  <p className="text-xs text-gray-400">Moonrise</p>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <ArrowUp className="w-4 h-4 text-blue-400" />
+                    <p className="text-xs text-gray-400">Moonrise</p>
+                  </div>
+                  <span className="text-xs text-gray-500 font-mono">{moonriseDir.dir}</span>
                 </div>
                 <p className="text-lg font-bold text-white font-mono">
                   {formatTimeInZone(moonrise)}
                 </p>
+                <p className="text-xs text-gray-500">{moonriseDir.azimuth} azimuth</p>
               </div>
 
               <div className="bg-dark-elevated border border-dark-border rounded-lg p-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <ArrowDown className="w-4 h-4 text-blue-400" />
-                  <p className="text-xs text-gray-400">Moonset</p>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <ArrowDown className="w-4 h-4 text-blue-400" />
+                    <p className="text-xs text-gray-400">Moonset</p>
+                  </div>
+                  <span className="text-xs text-gray-500 font-mono">{moonsetDir.dir}</span>
                 </div>
                 <p className="text-lg font-bold text-white font-mono">
                   {formatTimeInZone(moonset)}
                 </p>
+                <p className="text-xs text-gray-500">{moonsetDir.azimuth} azimuth</p>
               </div>
             </div>
 

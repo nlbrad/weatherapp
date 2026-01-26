@@ -8,6 +8,7 @@ import {
   RefreshCw, Star
 } from 'lucide-react';
 import { weatherAPI, locationsAPI } from '../services/api';
+import weatherCache from '../services/weatherCache';
 import LocationSearch from '../components/LocationSearch';
 
 /**
@@ -76,11 +77,21 @@ const LandingPage = () => {
       setError(null);
       const data = await locationsAPI.getUserLocations(userId);
       
+      const failedLocations = []; // Track locations that fail to load
+      
       const locationsWithWeather = await Promise.all(
         data.locations.map(async (loc) => {
           try {
-            const weatherData = await weatherAPI.getWeather(loc.locationName, loc.country);
-            const forecastData = await weatherAPI.getForecast(loc.locationName, loc.country);
+            // Skip locations without coordinates
+            if (!loc.latitude || !loc.longitude) {
+              console.warn(`⚠️ ${loc.locationName} missing coordinates`);
+              failedLocations.push(loc);
+              return null;
+            }
+            
+            // Use weatherCache for efficient data fetching
+            const weatherData = await weatherCache.get(loc.latitude, loc.longitude);
+            
             return {
               locationName: loc.locationName,
               country: loc.country,
@@ -90,31 +101,58 @@ const LandingPage = () => {
               minTemp: loc.minTemp,
               maxTemp: loc.maxTemp,
               weather: {
-                temp: weatherData.weather.temp,
-                feelsLike: weatherData.weather.feelsLike,
-                tempMin: weatherData.weather.tempMin,
-                tempMax: weatherData.weather.tempMax,
-                humidity: weatherData.weather.humidity,
-                pressure: weatherData.weather.pressure,
-                condition: weatherData.weather.condition,
-                description: weatherData.weather.description,
-                icon: weatherData.weather.icon,
-                visibility: weatherData.weather.visibility || 10,
-                clouds: weatherData.weather.clouds || 0,
+                temp: weatherData.current.temp,
+                feelsLike: weatherData.current.feelsLike,
+                tempMin: weatherData.daily[0]?.tempMin || weatherData.current.temp - 2,
+                tempMax: weatherData.daily[0]?.tempMax || weatherData.current.temp + 2,
+                humidity: weatherData.current.humidity,
+                pressure: weatherData.current.pressure,
+                condition: weatherData.current.condition,
+                description: weatherData.current.description,
+                icon: weatherData.current.icon,
+                visibility: weatherData.current.visibility / 1000 || 10, // Convert to km
+                clouds: weatherData.current.clouds || 0,
+                uvi: weatherData.current.uvi,
                 wind: {
-                  speed: weatherData.wind.speed,
-                  direction: weatherData.wind.direction
+                  speed: weatherData.current.windSpeed,
+                  direction: weatherData.current.windDeg
                 },
                 airQuality: weatherData.airQuality
               },
-              forecast: forecastData
+              forecast: {
+                current: {
+                  timezone: weatherData.timezone,
+                  sunrise: weatherData.current.sunrise,
+                  sunset: weatherData.current.sunset,
+                },
+                hourly: weatherData.hourly,
+                daily: weatherData.daily,
+                alerts: weatherData.alerts || []
+              }
             };
           } catch (err) {
             console.error(`Failed to fetch weather for ${loc.locationName}:`, err);
+            failedLocations.push(loc);
             return null;
           }
         })
       );
+      
+      // Auto-cleanup: Delete locations that consistently fail
+      if (failedLocations.length > 0) {
+        console.warn(`🧹 Found ${failedLocations.length} broken location(s):`, 
+          failedLocations.map(l => `${l.locationName} (lat: ${l.latitude}, lon: ${l.longitude})`));
+        
+        for (const failedLoc of failedLocations) {
+          console.log(`🗑️ Auto-removing broken location: ${failedLoc.locationName}`);
+          try {
+            await locationsAPI.deleteLocation(userId, failedLoc.locationName);
+            console.log(`✅ Deleted: ${failedLoc.locationName}`);
+          } catch (deleteErr) {
+            console.error(`❌ Failed to auto-delete ${failedLoc.locationName}:`, deleteErr);
+          }
+        }
+      }
       
       setLocations(locationsWithWeather.filter(loc => loc !== null));
     } catch (err) {
@@ -124,9 +162,43 @@ const LandingPage = () => {
       setLoading(false);
     }
   };
+  
+  // Expose cleanup function to window for manual cleanup via console
+  useEffect(() => {
+    window.cleanupBrokenLocations = async () => {
+      console.log('🧹 Starting manual cleanup...');
+      const data = await locationsAPI.getUserLocations(userId);
+      console.log(`Found ${data.locations.length} total locations`);
+      
+      for (const loc of data.locations) {
+        try {
+          await weatherAPI.getWeather(loc.locationName, loc.country, loc.latitude, loc.longitude);
+          console.log(`✅ ${loc.locationName} - OK`);
+        } catch (err) {
+          console.log(`❌ ${loc.locationName} - BROKEN, deleting...`);
+          try {
+            await locationsAPI.deleteLocation(userId, loc.locationName);
+            console.log(`🗑️ Deleted: ${loc.locationName}`);
+          } catch (delErr) {
+            console.error(`Failed to delete: ${delErr}`);
+          }
+        }
+      }
+      console.log('🧹 Cleanup complete! Refreshing...');
+      window.location.reload();
+    };
+    
+    console.log('💡 Tip: Run window.cleanupBrokenLocations() to remove broken locations');
+  }, []);
 
   const refreshData = async () => {
     setRefreshing(true);
+    // Force refresh all cached data
+    for (const loc of locations) {
+      if (loc.latitude && loc.longitude) {
+        await weatherCache.refresh(loc.latitude, loc.longitude);
+      }
+    }
     await loadLocations();
     setRefreshing(false);
   };
@@ -134,6 +206,11 @@ const LandingPage = () => {
   const addLocation = async () => {
     if (!newLocation.name) {
       alert('Please search and select a location');
+      return;
+    }
+
+    if (!newLocation.latitude || !newLocation.longitude) {
+      alert('Location coordinates not found. Please select a location from the search results.');
       return;
     }
 
@@ -150,10 +227,9 @@ const LandingPage = () => {
         maxTemp: parseInt(newLocation.maxTemp),
       });
       
-      // Fetch weather for new location and append to end (don't reload all)
+      // Fetch weather using cache
       try {
-        const weatherData = await weatherAPI.getWeather(newLocation.name, newLocation.country);
-        const forecastData = await weatherAPI.getForecast(newLocation.name, newLocation.country);
+        const weatherData = await weatherCache.get(newLocation.latitude, newLocation.longitude);
         
         const newLocationWithWeather = {
           locationName: newLocation.name,
@@ -164,24 +240,34 @@ const LandingPage = () => {
           minTemp: parseInt(newLocation.minTemp),
           maxTemp: parseInt(newLocation.maxTemp),
           weather: {
-            temp: weatherData.weather.temp,
-            feelsLike: weatherData.weather.feelsLike,
-            tempMin: weatherData.weather.tempMin,
-            tempMax: weatherData.weather.tempMax,
-            humidity: weatherData.weather.humidity,
-            pressure: weatherData.weather.pressure,
-            condition: weatherData.weather.condition,
-            description: weatherData.weather.description,
-            icon: weatherData.weather.icon,
-            visibility: weatherData.weather.visibility || 10,
-            clouds: weatherData.weather.clouds || 0,
+            temp: weatherData.current.temp,
+            feelsLike: weatherData.current.feelsLike,
+            tempMin: weatherData.daily[0]?.tempMin || weatherData.current.temp - 2,
+            tempMax: weatherData.daily[0]?.tempMax || weatherData.current.temp + 2,
+            humidity: weatherData.current.humidity,
+            pressure: weatherData.current.pressure,
+            condition: weatherData.current.condition,
+            description: weatherData.current.description,
+            icon: weatherData.current.icon,
+            visibility: weatherData.current.visibility / 1000 || 10,
+            clouds: weatherData.current.clouds || 0,
+            uvi: weatherData.current.uvi,
             wind: {
-              speed: weatherData.wind.speed,
-              direction: weatherData.wind.direction
+              speed: weatherData.current.windSpeed,
+              direction: weatherData.current.windDeg
             },
             airQuality: weatherData.airQuality
           },
-          forecast: forecastData
+          forecast: {
+            current: {
+              timezone: weatherData.timezone,
+              sunrise: weatherData.current.sunrise,
+              sunset: weatherData.current.sunset,
+            },
+            hourly: weatherData.hourly,
+            daily: weatherData.daily,
+            alerts: weatherData.alerts || []
+          }
         };
         
         // Append to end of list
