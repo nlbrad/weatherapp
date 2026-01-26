@@ -1,22 +1,22 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Wind, AlertTriangle } from 'lucide-react';
+import gustHistory from '../../services/gustHistory';
 
 /**
- * WindAnalysis - Dashboard Widget
+ * WindAnalysis - Dashboard Widget with Sticky Gusts
  * 
- * A comprehensive wind analysis panel for the full dashboard view.
- * Uses the ORIGINAL WindCompass design with added gust features.
- * 
- * Shows:
- * - Original wind compass with direction (tick marks, arrow, etc.)
- * - Current wind speed
- * - Wind gusts (with visual warning if significant)
- * - Speed vs Gust comparison bar
- * - Wind condition description (Beaufort scale)
+ * Features:
+ * - Original wind compass with direction
+ * - "Sticky gusts" - keeps showing last gust for up to 3 hours
+ * - Two states:
+ *   1. Has gust: "Gusts: 45.2 km/h" (normal display)
+ *   2. No gust: "Holding steady" (no bar)
  * 
  * Props:
  * - wind: { speed, direction, gust } - Wind data object
+ * - lat: Latitude (for gust history tracking)
+ * - lon: Longitude (for gust history tracking)
  */
 
 // Helper function to convert degrees to compass direction
@@ -26,7 +26,7 @@ const getCompassDirection = (degrees) => {
   return directions[index % 16];
 };
 
-// Describe wind conditions based on speed (Beaufort scale simplified)
+// Describe wind conditions based on speed (Beaufort scale)
 const getWindDescription = (speed) => {
   if (speed < 1) return { text: 'Calm', level: 0 };
   if (speed < 6) return { text: 'Light Air', level: 1 };
@@ -61,32 +61,35 @@ const getWindColor = (level) => {
   return colors[Math.min(level, colors.length - 1)];
 };
 
-const WindAnalysis = ({ wind, className = '' }) => {
+const WindAnalysis = ({ wind, lat, lon, className = '' }) => {
   // Extract wind properties with defaults
   const speed = wind?.speed || 0;
   const direction = wind?.direction || 0;
-  
-  // Handle gust properly: check if it's a valid number (including 0)
-  // wind_gust from OpenWeather is optional - only present when there are gusts
   const rawGust = wind?.gust;
-  const hasGustData = typeof rawGust === 'number' && rawGust > 0;
-  const gust = hasGustData ? rawGust : null;
-
+  
+  // Get gust state using the history service
+  const currentGust = typeof rawGust === 'number' && rawGust > 0 ? rawGust : null;
+  const gustState = gustHistory.getGustState(lat, lon, currentGust, speed);
+  
   const windCondition = getWindDescription(speed);
-  const gustCondition = hasGustData ? getWindDescription(gust) : null;
   const windColor = getWindColor(windCondition.level);
-  const gustColor = hasGustData ? getWindColor(gustCondition.level) : windColor;
+  
+  // Calculate gust-related values
+  const hasGust = gustState.hasGust;
+  const gustSpeed = gustState.gustSpeed;
+  const gustCondition = hasGust ? getWindDescription(gustSpeed) : null;
+  const gustColor = hasGust ? getWindColor(gustCondition.level) : null;
   
   // Check if gusts are significant (more than 10% higher than sustained speed)
-  const hasSignificantGust = hasGustData && gust > speed * 1.1;
-  const gustDifference = hasGustData && speed > 0 ? ((gust - speed) / speed * 100).toFixed(0) : 0;
+  const hasSignificantGust = hasGust && gustSpeed > speed * 1.1;
+  const gustDifference = hasGust && speed > 0 ? ((gustSpeed - speed) / speed * 100).toFixed(0) : 0;
   
   // For the comparison bar
-  const maxSpeed = Math.max(speed, hasGustData ? gust : 0, 30); // At least 30 for scale
+  const maxSpeed = Math.max(speed, hasGust ? gustSpeed : 0, 30);
   const speedPercent = (speed / maxSpeed) * 100;
-  const gustPercent = hasGustData ? (gust / maxSpeed) * 100 : 0;
+  const gustPercent = hasGust ? (gustSpeed / maxSpeed) * 100 : 0;
 
-  // Compass dimensions (matching original WindCompass 'medium' size)
+  // Compass dimensions
   const radius = 65;
   const centerX = radius + 10;
   const centerY = radius + 10;
@@ -124,7 +127,7 @@ const WindAnalysis = ({ wind, className = '' }) => {
         )}
       </div>
 
-      {/* Original Wind Compass Design */}
+      {/* Wind Compass */}
       <div className="flex flex-col items-center space-y-3 mb-4">
         <div className="relative w-40 h-40">
           <svg 
@@ -146,8 +149,8 @@ const WindAnalysis = ({ wind, className = '' }) => {
             {/* Tick marks around the edge - 72 ticks, every 5 degrees */}
             {Array.from({ length: 72 }).map((_, i) => {
               const angle = (i * 5) * (Math.PI / 180);
-              const isMajor = i % 6 === 0; // Every 30 degrees
-              const isCardinal = i % 18 === 0; // Every 90 degrees (N, E, S, W)
+              const isMajor = i % 6 === 0;
+              const isCardinal = i % 18 === 0;
               
               const innerRadius = isCardinal ? radius - 10 : isMajor ? radius - 6 : radius - 3;
               const outerRadius = radius;
@@ -186,15 +189,14 @@ const WindAnalysis = ({ wind, className = '' }) => {
             </text>
           </svg>
 
-          {/* Large rotating arrow - extends beyond circle (Original Design) */}
+          {/* Rotating arrow */}
           <motion.div
             className="absolute inset-0 flex items-center justify-center"
             initial={{ rotate: 0 }}
-            animate={{ rotate: direction + 180 }} // Reversed to show wind source
+            animate={{ rotate: direction + 180 }}
             transition={{ duration: 0.8, ease: "easeOut" }}
           >
             <svg width="70%" height="70%" viewBox="0 0 100 100">
-              {/* Arrow shaft - longer, extends to edges */}
               <line
                 x1="50"
                 y1="10"
@@ -204,12 +206,10 @@ const WindAnalysis = ({ wind, className = '' }) => {
                 strokeWidth="3"
                 strokeLinecap="round"
               />
-              {/* Arrowhead - larger */}
               <path
                 d="M 50 5 L 44 18 L 50 15 L 56 18 Z"
                 fill="#10B981"
               />
-              {/* Arrow tail - circle at bottom */}
               <circle
                 cx="50"
                 cy="90"
@@ -226,7 +226,7 @@ const WindAnalysis = ({ wind, className = '' }) => {
           </div>
         </div>
 
-        {/* Speed and direction below compass (Original Layout) */}
+        {/* Speed and direction below compass */}
         <div className="text-center">
           <p className="text-sm font-semibold text-white">Wind</p>
           <div className="h-0.5 w-full mt-1 rounded-full bg-gradient-to-r from-green-500 via-cyan-500 to-blue-500" />
@@ -246,7 +246,7 @@ const WindAnalysis = ({ wind, className = '' }) => {
         </div>
       </div>
 
-      {/* Speed vs Gust Comparison - NEW FEATURE */}
+      {/* Speed vs Gust Comparison */}
       <div className="bg-dark-elevated rounded-lg p-3 space-y-3">
         <div className="flex justify-between items-center mb-2">
           <span className="text-xs text-gray-400 font-medium">Speed vs Gusts</span>
@@ -271,23 +271,25 @@ const WindAnalysis = ({ wind, className = '' }) => {
           </div>
         </div>
         
-        {/* Gust bar */}
+        {/* Gust bar - two states: has gust or holding steady */}
         <div>
           <div className="flex justify-between items-center mb-1">
             <span className="text-xs text-gray-400">Gusts</span>
-            {hasGustData ? (
+            
+            {hasGust ? (
               <span className="text-xs font-mono font-semibold" style={{ color: gustColor }}>
-                {gust.toFixed(1)} km/h
+                {gustSpeed.toFixed(1)} km/h
                 {hasSignificantGust && (
                   <span className="text-gray-500 ml-1">(+{gustDifference}%)</span>
                 )}
               </span>
             ) : (
-              <span className="text-xs text-gray-500">No gusts</span>
+              <span className="text-xs text-gray-500 italic">Holding steady</span>
             )}
           </div>
+          
           <div className="h-2 bg-dark-border rounded-full overflow-hidden">
-            {hasGustData ? (
+            {hasGust ? (
               <motion.div
                 className="h-full rounded-full"
                 style={{ backgroundColor: gustColor }}
@@ -303,7 +305,7 @@ const WindAnalysis = ({ wind, className = '' }) => {
       </div>
 
       {/* Gust Alert - shown when significant */}
-      {hasGustData && hasSignificantGust && parseInt(gustDifference) > 25 && (
+      {hasSignificantGust && parseInt(gustDifference) > 25 && (
         <motion.div
           className="mt-3 bg-orange-500/10 border border-orange-500/20 rounded-lg p-2"
           initial={{ opacity: 0, y: 10 }}
@@ -313,7 +315,7 @@ const WindAnalysis = ({ wind, className = '' }) => {
           <div className="flex items-start space-x-2">
             <AlertTriangle className="w-4 h-4 text-orange-400 flex-shrink-0 mt-0.5" />
             <p className="text-xs text-orange-300">
-              Gusts {gustDifference}% above sustained wind. Take care outdoors.
+              Gusts {gustDifference}% above sustained wind.
             </p>
           </div>
         </motion.div>

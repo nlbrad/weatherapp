@@ -605,7 +605,7 @@ const LandingPage = () => {
                     <span className="text-xs text-gray-400">Windiest</span>
                   </div>
                   <p className="text-lg font-bold text-white">{stats.windiest.locationName}</p>
-                  <p className="text-sm text-green-400">{stats.windiest.weather.wind.speed} km/h</p>
+                  <p className="text-sm text-green-400">{stats.windiest.weather.wind.speed.toFixed(1)} km/h</p>
                 </div>
               </motion.div>
             )}
@@ -710,7 +710,7 @@ const LandingPage = () => {
                         </div>
                         <div className="flex items-center gap-2">
                           <Wind className="w-5 h-5" />
-                          <span>{heroLocation.weather.wind.speed} km/h</span>
+                          <span>{heroLocation.weather.wind.speed.toFixed(1)} km/h</span>
                         </div>
                       </div>
                       
@@ -805,7 +805,7 @@ const LandingPage = () => {
                             </span>
                             <span className="flex items-center gap-1">
                               <Wind className="w-4 h-4" />
-                              {location.weather.wind.speed}
+                              {location.weather.wind.speed.toFixed(1)}
                             </span>
                           </div>
                         </div>

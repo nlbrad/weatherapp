@@ -311,7 +311,9 @@ const DashboardPage = () => {
           
           {/* Wind Analysis - Takes 1 column */}
           <div className="xl:col-span-1">
-            <WindAnalysis wind={weather.wind} />
+            <WindAnalysis wind={weather.wind}
+            lat={location.latitude}
+            lon={location.longitude} />
           </div>
         </div>
 
