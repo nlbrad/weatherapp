@@ -9,7 +9,9 @@
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://weather-alert-backend-cxc6ghhhagd7dgb8.westeurope-01.azurewebsites.net/api';
 
-// Weather API
+/*const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api'
+*/
+
 export const weatherAPI = {
   /**
    * Get ALL weather data in a single call (preferred method)
@@ -126,8 +128,65 @@ export const alertsAPI = {
   }
 };
 
+// Preferences API - User settings and notification preferences
+export const preferencesAPI = {
+  // Get user preferences
+  getPreferences: async (userId) => {
+    const url = `${API_BASE_URL}/userpreferences?userId=${encodeURIComponent(userId)}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Failed to fetch preferences');
+    return response.json();
+  },
+
+  // Save user preferences
+  savePreferences: async (userId, preferences) => {
+    const response = await fetch(`${API_BASE_URL}/userpreferences`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId, preferences }),
+    });
+    if (!response.ok) throw new Error('Failed to save preferences');
+    return response.json();
+  },
+
+  // Send test Telegram message
+  sendTestTelegram: async (chatId) => {
+    const response = await fetch(`${API_BASE_URL}/telegram/send`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        chatId: chatId,
+        message: '🧪 *Test Message*\n\nYour Telegram notifications are working! ✅\n\n_Sent from Weather Alert Settings_'
+      }),
+    });
+    if (!response.ok) throw new Error('Failed to send test message');
+    return response.json();
+  },
+
+  // Send test WhatsApp message (uses existing endpoint)
+  sendTestWhatsApp: async (phoneNumber) => {
+    const response = await fetch(`${API_BASE_URL}/testwhatsapp`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        phoneNumber: phoneNumber,
+        message: '🧪 Test Message\n\nYour WhatsApp notifications are working! ✅\n\nSent from Weather Alert Settings'
+      }),
+    });
+    if (!response.ok) throw new Error('Failed to send test message');
+    return response.json();
+  }
+};
+
 export default {
   weatherAPI,
   locationsAPI,
-  alertsAPI
+  alertsAPI,
+  preferencesAPI
 };
