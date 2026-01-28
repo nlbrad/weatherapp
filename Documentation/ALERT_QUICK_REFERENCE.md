@@ -17,12 +17,12 @@
 # Daily Forecast
 curl -X POST "https://weather-alert-backend-cxc6ghhhagd7dgb8.westeurope-01.azurewebsites.net/api/daily-forecast" \
   -H "Content-Type: application/json" \
-  -d '{"chatId": "YOUR_CHAT_ID"}'
+  -d '{"chatId": "444081216"}'
 
 # Tonight's Sky (force send)
 curl -X POST "https://weather-alert-backend-cxc6ghhhagd7dgb8.westeurope-01.azurewebsites.net/api/tonights-sky" \
   -H "Content-Type: application/json" \
-  -d '{"chatId": "YOUR_CHAT_ID", "force": true}'
+  -d '{"chatId": "444081216", "force": true}'
 
 # Weather Warning
 curl "https://weather-alert-backend-cxc6ghhhagd7dgb8.westeurope-01.azurewebsites.net/api/weather-warning"
@@ -30,7 +30,7 @@ curl "https://weather-alert-backend-cxc6ghhhagd7dgb8.westeurope-01.azurewebsites
 # Aurora
 curl -X POST "https://weather-alert-backend-cxc6ghhhagd7dgb8.westeurope-01.azurewebsites.net/api/aurora-alert" \
   -H "Content-Type: application/json" \
-  -d '{"chatId": "YOUR_CHAT_ID", "force": true}'
+  -d '{"chatId": "444081216", "force": true}'
 ```
 
 ---
