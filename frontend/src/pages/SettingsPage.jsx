@@ -21,18 +21,22 @@ import {
   AlertCircle,
   RefreshCw,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  MapPin,
+  Info
 } from 'lucide-react';
-import { preferencesAPI } from '../services/api';
+import { preferencesAPI, locationsAPI } from '../services/api';
+import LocationSearch from '../components/LocationSearch';
 
 /**
  * SettingsPage - User preferences and notification settings
  * 
  * Sections:
  * 1. Notification Channels (WhatsApp, Telegram)
- * 2. Alert Types (what to be notified about)
- * 3. Quiet Hours (when not to send)
- * 4. Display Preferences (units, theme)
+ * 2. Alert Location (NEW)
+ * 3. Alert Types (what to be notified about)
+ * 4. Quiet Hours (when not to send)
+ * 5. Display Preferences (units, theme)
  */
 
 const SettingsPage = () => {
@@ -45,18 +49,24 @@ const SettingsPage = () => {
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
   const [showTelegramSetup, setShowTelegramSetup] = useState(false);
-  const [testingSend, setTestingSend] = useState(null); // 'telegram' | 'whatsapp' | null
+  const [testingSend, setTestingSend] = useState(null);
+
+  // Location state (NEW)
+  const [userLocation, setUserLocation] = useState(null);
+  const [loadingLocation, setLoadingLocation] = useState(true);
+  const [showLocationSearch, setShowLocationSearch] = useState(false);
+
+  // SkyScore info tooltip state (NEW)
+  const [showSkyScoreInfo, setShowSkyScoreInfo] = useState(false);
 
   // Preferences state
   const [preferences, setPreferences] = useState({
-    // Notification channels
     telegramEnabled: false,
     telegramChatId: '',
     whatsappEnabled: false,
     whatsappNumber: '',
-    preferredChannel: 'telegram', // 'telegram' | 'whatsapp' | 'both'
+    preferredChannel: 'telegram',
 
-    // Alert types
     alertTypes: {
       dailyForecast: true,
       weatherWarnings: true,
@@ -66,24 +76,22 @@ const SettingsPage = () => {
       rainAlerts: false,
     },
 
-    // Timing
     morningForecastTime: '07:00',
     quietHoursEnabled: false,
     quietHoursStart: '23:00',
     quietHoursEnd: '07:00',
 
-    // Thresholds
     stargazingThreshold: 70,
 
-    // Display
-    temperatureUnit: 'celsius', // 'celsius' | 'fahrenheit'
-    windSpeedUnit: 'kmh', // 'kmh' | 'mph' | 'ms'
-    timeFormat: '24h', // '12h' | '24h'
+    temperatureUnit: 'celsius',
+    windSpeedUnit: 'kmh',
+    timeFormat: '24h',
   });
 
-  // Load preferences on mount
+  // Load preferences and location on mount
   useEffect(() => {
     loadPreferences();
+    loadUserLocation();
   }, []);
 
   const loadPreferences = async () => {
@@ -96,9 +104,51 @@ const SettingsPage = () => {
       }
     } catch (err) {
       console.error('Failed to load preferences:', err);
-      // Use defaults if load fails - that's okay for new users
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Load user location (NEW)
+  const loadUserLocation = async () => {
+    try {
+      setLoadingLocation(true);
+      const data = await locationsAPI.getLocations(userId);
+      if (data.locations && data.locations.length > 0) {
+        const primary = data.locations.find(l => l.isPrimary) || data.locations[0];
+        setUserLocation(primary);
+      }
+    } catch (err) {
+      console.error('Failed to load location:', err);
+    } finally {
+      setLoadingLocation(false);
+    }
+  };
+
+  // Save user location (NEW)
+  const saveUserLocation = async (location) => {
+    try {
+      await locationsAPI.saveLocation({
+        userId: userId,
+        locationName: location.name,
+        country: location.country,
+        latitude: location.lat,
+        longitude: location.lon,
+        alertsEnabled: true,
+        isPrimary: true
+      });
+      
+      setUserLocation({
+        locationName: location.name,
+        country: location.country,
+        latitude: location.lat,
+        longitude: location.lon
+      });
+      setShowLocationSearch(false);
+      setSuccessMessage('Location updated!');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err) {
+      setError('Failed to save location');
     }
   };
 
@@ -156,12 +206,10 @@ const SettingsPage = () => {
     setTimeout(() => setSuccessMessage(null), 2000);
   };
 
-  // Update a single preference
   const updatePref = (key, value) => {
     setPreferences(prev => ({ ...prev, [key]: value }));
   };
 
-  // Update alert type
   const updateAlertType = (type, enabled) => {
     setPreferences(prev => ({
       ...prev,
@@ -282,55 +330,48 @@ const SettingsPage = () => {
                 animate={{ opacity: 1, height: 'auto' }}
                 className="space-y-4"
               >
-                {/* Setup Instructions Toggle */}
                 <button
                   onClick={() => setShowTelegramSetup(!showTelegramSetup)}
                   className="w-full flex items-center justify-between p-3 bg-dark-bg rounded-lg
                            text-sm text-gray-400 hover:text-gray-300 transition-colors"
                 >
                   <span>📋 Setup Instructions</span>
-                  {showTelegramSetup ? (
-                    <ChevronUp className="w-4 h-4" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4" />
-                  )}
+                  {showTelegramSetup ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                 </button>
 
                 {showTelegramSetup && (
                   <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    className="p-4 bg-dark-bg rounded-lg space-y-3 text-sm"
+                    className="p-4 bg-dark-bg rounded-lg space-y-3"
                   >
-                    <div className="flex items-start gap-3">
-                      <span className="w-6 h-6 bg-primary/20 rounded-full flex items-center justify-center text-primary text-xs font-bold">1</span>
-                      <div>
-                        <p className="text-gray-300">Open Telegram and search for:</p>
-                        <code className="block mt-1 px-2 py-1 bg-dark-elevated rounded text-primary">
-                          @YourWeatherBot
-                        </code>
-                      </div>
+                    <p className="text-sm text-gray-300">1. Open Telegram and search for:</p>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 px-3 py-2 bg-dark-surface rounded text-primary text-sm">
+                        @WeatherAlertDublinBot
+                      </code>
+                      <button
+                        onClick={() => copyToClipboard('@WeatherAlertDublinBot')}
+                        className="p-2 hover:bg-dark-surface rounded-lg transition-colors"
+                      >
+                        <Copy className="w-4 h-4 text-gray-400" />
+                      </button>
                     </div>
-                    <div className="flex items-start gap-3">
-                      <span className="w-6 h-6 bg-primary/20 rounded-full flex items-center justify-center text-primary text-xs font-bold">2</span>
-                      <p className="text-gray-300">Click <strong>Start</strong> to begin</p>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <span className="w-6 h-6 bg-primary/20 rounded-full flex items-center justify-center text-primary text-xs font-bold">3</span>
-                      <p className="text-gray-300">The bot will send you your <strong>Chat ID</strong></p>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <span className="w-6 h-6 bg-primary/20 rounded-full flex items-center justify-center text-primary text-xs font-bold">4</span>
-                      <p className="text-gray-300">Paste the Chat ID below</p>
-                    </div>
+                    <p className="text-sm text-gray-300">2. Start a chat and send <code className="text-primary">/start</code></p>
+                    <p className="text-sm text-gray-300">3. The bot will reply with your Chat ID - paste it below</p>
+                    <a
+                      href="https://t.me/WeatherAlertDublinBot"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
+                    >
+                      Open in Telegram <ExternalLink className="w-3 h-3" />
+                    </a>
                   </motion.div>
                 )}
 
-                {/* Chat ID Input */}
                 <div>
-                  <label className="block text-sm text-gray-400 mb-2">
-                    Telegram Chat ID
-                  </label>
+                  <label className="block text-sm text-gray-400 mb-2">Chat ID</label>
                   <div className="flex gap-2">
                     <input
                       type="text"
@@ -338,14 +379,14 @@ const SettingsPage = () => {
                       onChange={(e) => updatePref('telegramChatId', e.target.value)}
                       placeholder="e.g. 123456789"
                       className="flex-1 px-4 py-2 bg-dark-bg border border-dark-border rounded-lg
-                               text-white placeholder-gray-500 focus:ring-2 focus:ring-primary 
-                               focus:border-transparent transition-all"
+                               text-white placeholder-gray-500
+                               focus:ring-2 focus:ring-primary focus:border-transparent"
                     />
                     <button
                       onClick={() => sendTestMessage('telegram')}
                       disabled={testingSend === 'telegram' || !preferences.telegramChatId}
                       className="px-4 py-2 bg-[#0088cc] text-white rounded-lg hover:bg-[#0088cc]/80
-                               transition-colors disabled:opacity-50 flex items-center gap-2"
+                               disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                     >
                       {testingSend === 'telegram' ? (
                         <Loader className="w-4 h-4 animate-spin" />
@@ -369,60 +410,24 @@ const SettingsPage = () => {
                 </div>
                 <div>
                   <h3 className="font-medium text-white">WhatsApp</h3>
-                  <p className="text-sm text-gray-400">Requires Twilio setup</p>
+                  <p className="text-sm text-gray-400">Coming soon</p>
                 </div>
               </div>
-              <label className="relative inline-flex items-center cursor-pointer">
+              <label className="relative inline-flex items-center cursor-pointer opacity-50">
                 <input
                   type="checkbox"
                   checked={preferences.whatsappEnabled}
                   onChange={(e) => updatePref('whatsappEnabled', e.target.checked)}
+                  disabled
                   className="sr-only peer"
                 />
                 <div className="w-11 h-6 bg-dark-border rounded-full peer 
-                              peer-checked:bg-[#25D366] peer-checked:after:translate-x-full
+                              peer-checked:bg-primary peer-checked:after:translate-x-full
                               after:content-[''] after:absolute after:top-0.5 after:left-[2px]
                               after:bg-white after:rounded-full after:h-5 after:w-5 
                               after:transition-all"></div>
               </label>
             </div>
-
-            {preferences.whatsappEnabled && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-              >
-                <div>
-                  <label className="block text-sm text-gray-400 mb-2">
-                    WhatsApp Number (with country code)
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="tel"
-                      value={preferences.whatsappNumber}
-                      onChange={(e) => updatePref('whatsappNumber', e.target.value)}
-                      placeholder="e.g. +353871234567"
-                      className="flex-1 px-4 py-2 bg-dark-bg border border-dark-border rounded-lg
-                               text-white placeholder-gray-500 focus:ring-2 focus:ring-[#25D366] 
-                               focus:border-transparent transition-all"
-                    />
-                    <button
-                      onClick={() => sendTestMessage('whatsapp')}
-                      disabled={testingSend === 'whatsapp' || !preferences.whatsappNumber}
-                      className="px-4 py-2 bg-[#25D366] text-white rounded-lg hover:bg-[#25D366]/80
-                               transition-colors disabled:opacity-50 flex items-center gap-2"
-                    >
-                      {testingSend === 'whatsapp' ? (
-                        <Loader className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Send className="w-4 h-4" />
-                      )}
-                      Test
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            )}
           </div>
 
           {/* Preferred Channel */}
@@ -443,6 +448,84 @@ const SettingsPage = () => {
               </select>
             </div>
           )}
+        </section>
+
+        {/* ============================================ */}
+        {/* ALERT LOCATION (NEW) */}
+        {/* ============================================ */}
+        <section className="bg-dark-surface border border-dark-border rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-6">
+            <MapPin className="w-5 h-5 text-primary" />
+            <h2 className="text-lg font-semibold text-white">Alert Location</h2>
+          </div>
+          
+          <p className="text-sm text-gray-400 mb-4">
+            Weather alerts will be based on this location.
+          </p>
+          
+          {loadingLocation ? (
+            <div className="flex items-center gap-2 text-gray-400">
+              <Loader className="w-4 h-4 animate-spin" />
+              <span>Loading location...</span>
+            </div>
+          ) : userLocation ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 bg-dark-elevated rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-primary/20 rounded-lg flex items-center justify-center">
+                    <MapPin className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-medium text-white">{userLocation.locationName}</h3>
+                    <p className="text-sm text-gray-400">
+                      {userLocation.country && `${userLocation.country} · `}
+                      {userLocation.latitude?.toFixed(2)}°N, {Math.abs(userLocation.longitude)?.toFixed(2)}°W
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowLocationSearch(true)}
+                  className="px-4 py-2 text-sm text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                >
+                  Change
+                </button>
+              </div>
+              
+              {showLocationSearch && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  className="p-4 bg-dark-elevated rounded-lg border border-dark-border"
+                >
+                  <label className="block text-sm text-gray-400 mb-2">
+                    Search for a new location
+                  </label>
+                  <LocationSearch
+                    onSelect={(location) => saveUserLocation(location)}
+                    placeholder="Start typing a city name..."
+                  />
+                  <button
+                    onClick={() => setShowLocationSearch(false)}
+                    className="mt-3 text-sm text-gray-400 hover:text-white"
+                  >
+                    Cancel
+                  </button>
+                </motion.div>
+              )}
+            </div>
+          ) : (
+            <div className="p-4 bg-dark-elevated rounded-lg border border-dashed border-dark-border">
+              <p className="text-gray-400 mb-3">No location set. Add one to receive weather alerts.</p>
+              <LocationSearch
+                onSelect={(location) => saveUserLocation(location)}
+                placeholder="Search for your city..."
+              />
+            </div>
+          )}
+          
+          <p className="text-xs text-gray-500 mt-4">
+            💡 You can manage multiple locations from the main dashboard.
+          </p>
         </section>
 
         {/* ============================================ */}
@@ -482,7 +565,7 @@ const SettingsPage = () => {
               onChange={(v) => updateAlertType('temperatureAlerts', v)}
             />
 
-            {/* Stargazing Alerts */}
+            {/* Stargazing Alerts - UPDATED with info tooltip */}
             <AlertTypeToggle
               icon={<Moon className="w-5 h-5 text-purple-400" />}
               title="Stargazing Alerts"
@@ -498,13 +581,71 @@ const SettingsPage = () => {
                 animate={{ opacity: 1, height: 'auto' }}
                 className="ml-12 p-4 bg-dark-elevated rounded-lg"
               >
-                <label className="block text-sm text-gray-400 mb-2">
-                  Minimum SkyScore to alert (0-100)
-                </label>
+                <div className="flex items-center gap-2 mb-2">
+                  <label className="text-sm text-gray-400">
+                    Minimum SkyScore to alert
+                  </label>
+                  
+                  {/* Info Icon with Tooltip */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onMouseEnter={() => setShowSkyScoreInfo(true)}
+                      onMouseLeave={() => setShowSkyScoreInfo(false)}
+                      onClick={() => setShowSkyScoreInfo(!showSkyScoreInfo)}
+                      className="text-gray-500 hover:text-gray-300 transition-colors"
+                    >
+                      <Info className="w-4 h-4" />
+                    </button>
+                    
+                    {showSkyScoreInfo && (
+                      <div className="absolute left-6 top-0 z-50 w-72 p-4 bg-dark-surface border border-dark-border rounded-lg shadow-xl">
+                        <h4 className="font-semibold text-white mb-2">SkyScore Explained</h4>
+                        <p className="text-sm text-gray-400 mb-3">
+                          SkyScore rates stargazing conditions from 0-100 based on:
+                        </p>
+                        <ul className="text-sm text-gray-400 space-y-1 mb-3">
+                          <li>• <span className="text-gray-300">Cloud cover</span> (40%)</li>
+                          <li>• <span className="text-gray-300">Moon brightness</span> (25%)</li>
+                          <li>• <span className="text-gray-300">Humidity</span> (15%)</li>
+                          <li>• <span className="text-gray-300">Wind speed</span> (10%)</li>
+                          <li>• <span className="text-gray-300">Visibility</span> (10%)</li>
+                        </ul>
+                        <div className="text-xs space-y-1 border-t border-dark-border pt-2">
+                          <div className="flex justify-between">
+                            <span className="text-purple-400">90-100:</span>
+                            <span className="text-gray-300">Exceptional ✨</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-purple-400">80-89:</span>
+                            <span className="text-gray-300">Excellent</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-purple-400">65-79:</span>
+                            <span className="text-gray-300">Good</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-purple-400">50-64:</span>
+                            <span className="text-gray-300">Fair</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-purple-400">35-49:</span>
+                            <span className="text-gray-300">Poor</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-purple-400">0-34:</span>
+                            <span className="text-gray-300">Bad</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
                 <div className="flex items-center gap-4">
                   <input
                     type="range"
-                    min="50"
+                    min="20"
                     max="95"
                     step="5"
                     value={preferences.stargazingThreshold}
@@ -515,8 +656,16 @@ const SettingsPage = () => {
                     {preferences.stargazingThreshold}
                   </span>
                 </div>
+                
                 <p className="text-xs text-gray-500 mt-2">
-                  Higher = fewer alerts, but better conditions
+                  {preferences.stargazingThreshold >= 80 
+                    ? "🌟 Only excellent conditions - fewer alerts"
+                    : preferences.stargazingThreshold >= 65
+                    ? "⭐ Good conditions - balanced alerts"
+                    : preferences.stargazingThreshold >= 50
+                    ? "☁️ Fair conditions - more frequent alerts"
+                    : "🔔 All viewable conditions - most alerts"
+                  }
                 </p>
               </motion.div>
             )}
@@ -528,15 +677,14 @@ const SettingsPage = () => {
               description="Aurora borealis visibility alerts"
               enabled={preferences.alertTypes.auroraAlerts}
               onChange={(v) => updateAlertType('auroraAlerts', v)}
-              badge="Coming Soon"
-              disabled
+              badge="New"
             />
 
             {/* Rain Alerts */}
             <AlertTypeToggle
-              icon={<CloudRain className="w-5 h-5 text-cyan-400" />}
+              icon={<CloudRain className="w-5 h-5 text-blue-400" />}
               title="Rain Alerts"
-              description="Alert before rain starts"
+              description="When rain is expected"
               enabled={preferences.alertTypes.rainAlerts}
               onChange={(v) => updateAlertType('rainAlerts', v)}
               badge="Coming Soon"
@@ -550,27 +698,27 @@ const SettingsPage = () => {
         {/* ============================================ */}
         <section className="bg-dark-surface border border-dark-border rounded-xl p-6">
           <div className="flex items-center gap-3 mb-6">
-            <Moon className="w-5 h-5 text-indigo-400" />
+            <RefreshCw className="w-5 h-5 text-gray-400" />
             <h2 className="text-lg font-semibold text-white">Timing</h2>
           </div>
 
-          {/* Morning Forecast Time */}
-          <div className="mb-6">
-            <label className="block text-sm text-gray-400 mb-2">
-              Morning Forecast Time
-            </label>
-            <input
-              type="time"
-              value={preferences.morningForecastTime}
-              onChange={(e) => updatePref('morningForecastTime', e.target.value)}
-              className="px-4 py-2 bg-dark-elevated border border-dark-border rounded-lg
-                       text-white focus:ring-2 focus:ring-primary focus:border-transparent"
-            />
-          </div>
+          <div className="space-y-6">
+            {/* Morning Forecast Time */}
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">
+                Morning Forecast Time
+              </label>
+              <input
+                type="time"
+                value={preferences.morningForecastTime}
+                onChange={(e) => updatePref('morningForecastTime', e.target.value)}
+                className="px-4 py-2 bg-dark-elevated border border-dark-border rounded-lg
+                         text-white focus:ring-2 focus:ring-primary"
+              />
+            </div>
 
-          {/* Quiet Hours */}
-          <div className="p-4 bg-dark-elevated rounded-lg">
-            <div className="flex items-center justify-between mb-4">
+            {/* Quiet Hours */}
+            <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-medium text-white">Quiet Hours</h3>
                 <p className="text-sm text-gray-400">Don't send alerts during these hours</p>
@@ -632,7 +780,6 @@ const SettingsPage = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Temperature Unit */}
             <div>
               <label className="block text-sm text-gray-400 mb-2">Temperature</label>
               <select
@@ -646,7 +793,6 @@ const SettingsPage = () => {
               </select>
             </div>
 
-            {/* Wind Speed Unit */}
             <div>
               <label className="block text-sm text-gray-400 mb-2">Wind Speed</label>
               <select
@@ -661,7 +807,6 @@ const SettingsPage = () => {
               </select>
             </div>
 
-            {/* Time Format */}
             <div>
               <label className="block text-sm text-gray-400 mb-2">Time Format</label>
               <select
@@ -735,7 +880,7 @@ const AlertTypeToggle = ({ icon, title, description, enabled, onChange, badge, d
                     peer-checked:bg-primary peer-checked:after:translate-x-full
                     peer-disabled:cursor-not-allowed
                     after:content-[''] after:absolute after:top-0.5 after:left-[2px]
-                    after:bg-white after:rounded-full after:h-5 after-5 
+                    after:bg-white after:rounded-full after:h-5 after:w-5 
                     after:transition-all"></div>
     </label>
   </div>
