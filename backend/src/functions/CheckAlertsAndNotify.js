@@ -14,10 +14,17 @@ const twilioClient = twilio(
 
 const openWeatherApiKey = process.env.OPENWEATHER_API_KEY;
 
-// Timer trigger - runs every hour
+// Timer trigger - runs every hour (except 7am to avoid duplicate with DailyForecast)
 app.timer('CheckAlertsAndNotify', {
     schedule: '0 0 * * * *', // Every hour at minute 0
     handler: async (myTimer, context) => {
+        // Skip 7am UTC - DailyForecastTimer handles this hour
+        const currentHour = new Date().getUTCHours();
+        if (currentHour === 7) {
+            context.log('CheckAlertsAndNotify: Skipping 7am - DailyForecastTimer handles this');
+            return;
+        }
+        
         context.log('CheckAlertsAndNotify timer triggered');
         await checkAndNotify(context);
     }

@@ -6,19 +6,23 @@
  * Features:
  * - Quick stats (active alerts, Telegram status)
  * - All alert types with enable/disable AND customization
- * - Recent alert history
+ * - REAL alert history from API
  * - Setup prompts if not configured
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { 
   Bell, Sun, Star, AlertTriangle, Sparkles, Clock, Send, 
-  Check, ChevronRight, Loader, RefreshCw, MapPin, Settings,
-  Thermometer, X, Edit2, CheckCircle, AlertCircle
+  Check, ChevronRight, Loader, RefreshCw, MapPin,
+  Thermometer, X, Edit2, CheckCircle, AlertCircle, History, Zap,
+  Newspaper, Plus, Trash2
 } from 'lucide-react';
 import { useAuth } from '../auth';
-import { locationsAPI, preferencesAPI } from '../services/api';
+import { locationsAPI, preferencesAPI, alertsAPI } from '../services/api';
+
+// API base URL for test alerts
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://weather-alert-backend-cxc6ghhhagd7dgb8.westeurope-01.azurewebsites.net/api';
 
 // Alert type definitions with defaults
 const ALERT_TYPES = {
@@ -33,6 +37,17 @@ const ALERT_TYPES = {
     timeLabel: 'Delivery time',
     hasTime: true,
   },
+  newsDigest: {
+    id: 'newsDigest',
+    name: 'News Digest',
+    icon: Newspaper,
+    color: '#10B981',
+    bgColor: 'bg-emerald-500/20',
+    description: 'Irish, World, Tech, Finance, Crypto, Science + Markets',
+    hasMultipleTimes: true,  // Can set multiple delivery times
+    defaultTimes: ['07:30', '18:00'],
+    maxTimes: 6,  // Max times per day
+  },
   stargazingAlerts: {
     id: 'stargazingAlerts',
     name: "Tonight's Sky",
@@ -46,7 +61,6 @@ const ALERT_TYPES = {
     hasThreshold: true,
     thresholdLabel: 'Min SkyScore',
     thresholdDefault: 65,
-    thresholdUnit: '',
   },
   weatherWarnings: {
     id: 'weatherWarnings',
@@ -65,12 +79,11 @@ const ALERT_TYPES = {
     color: '#8B5CF6',
     bgColor: 'bg-purple-500/20',
     description: 'Northern Lights notifications',
-    timeLabel: 'Real-time (Kp ≥ 5)',
+    timeLabel: 'Real-time',
     hasTime: false,
     hasThreshold: true,
-    thresholdLabel: 'Min Kp Index',
-    thresholdDefault: 5,
-    thresholdUnit: '',
+    thresholdLabel: 'Min AuroraScore',
+    thresholdDefault: 50,
   },
   temperatureAlerts: {
     id: 'temperatureAlerts',
@@ -84,32 +97,116 @@ const ALERT_TYPES = {
   },
 };
 
-// Mock recent history - replace with real API
-const mockHistory = [
-  { id: 1, type: 'dailyForecast', time: 'Today 7:00 AM', status: 'Delivered', location: 'Dublin' },
-  { id: 2, type: 'stargazingAlerts', time: 'Yesterday 6:00 PM', status: 'Score: 72', location: 'Dublin' },
-  { id: 3, type: 'weatherWarnings', time: 'Yesterday 2:14 PM', status: 'Yellow Wind', location: 'Ireland' },
-];
+// Map API alert types to our config
+const ALERT_TYPE_MAP = {
+  'daily-forecast': 'dailyForecast',
+  'news-digest': 'newsDigest',
+  'tonights-sky': 'stargazingAlerts',
+  'weather-warning': 'weatherWarnings',
+  'aurora': 'auroraAlerts',
+  'temperature': 'temperatureAlerts',
+};
 
 const AlertCenterPage = () => {
-  const navigate = useNavigate();
   const { getUserId } = useAuth();
   const userId = getUserId();
 
   // State
   const [preferences, setPreferences] = useState(null);
   const [primaryLocation, setPrimaryLocation] = useState(null);
+  const [alertHistory, setAlertHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
   
   // Edit modal state
   const [editingAlert, setEditingAlert] = useState(null);
   const [editValues, setEditValues] = useState({});
+  
+  // Test alert state
+  const [testingAlert, setTestingAlert] = useState(null);
+  const [testResult, setTestResult] = useState(null);
 
   /**
-   * Load user data
+   * Send a test alert
+   */
+  const sendTestAlert = async (alertType) => {
+    // Check if Telegram is configured
+    if (!preferences?.telegramChatId) {
+      setTestResult({ type: alertType, success: false, message: 'Set up Telegram first in Preferences' });
+      setTimeout(() => setTestResult(null), 4000);
+      return;
+    }
+
+    // Check if location is set
+    if (!primaryLocation) {
+      setTestResult({ type: alertType, success: false, message: 'Add a location first' });
+      setTimeout(() => setTestResult(null), 4000);
+      return;
+    }
+
+    setTestingAlert(alertType);
+    setTestResult(null);
+
+    try {
+      const chatId = preferences.telegramChatId;
+      const lat = primaryLocation.latitude;
+      const lon = primaryLocation.longitude;
+      const location = primaryLocation.locationName;
+
+      let endpoint = '';
+      let body = {};
+
+      switch (alertType) {
+        case 'dailyForecast':
+          endpoint = `${API_BASE_URL}/daily-forecast`;
+          body = { chatId, lat, lon, locationName: location, force: true };
+          break;
+        case 'newsDigest':
+          endpoint = `${API_BASE_URL}/news-digest`;
+          body = { chatId, force: true };
+          break;
+        case 'stargazingAlerts':
+          endpoint = `${API_BASE_URL}/tonights-sky`;
+          body = { chatId, lat, lon, locationName: location, force: true };
+          break;
+        case 'weatherWarnings':
+          endpoint = `${API_BASE_URL}/weather-warning`;
+          body = { chatId, force: true };
+          break;
+        case 'auroraAlerts':
+          endpoint = `${API_BASE_URL}/aurora-alert`;
+          body = { chatId, lat, lon, locationName: location, force: true };
+          break;
+        default:
+          throw new Error('Unknown alert type');
+      }
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      const data = await response.json();
+
+      if (data.success || data.messageSent) {
+        setTestResult({ type: alertType, success: true, message: 'Test sent! Check Telegram' });
+      } else {
+        const errorMsg = data.error || 'Failed to send';
+        setTestResult({ type: alertType, success: false, message: errorMsg });
+      }
+    } catch (err) {
+      console.error('Test alert error:', err);
+      setTestResult({ type: alertType, success: false, message: 'Network error: ' + err.message });
+    } finally {
+      setTestingAlert(null);
+      setTimeout(() => setTestResult(null), 4000);
+    }
+  };
+
+  /**
+   * Load all user data
    */
   const loadData = useCallback(async (showRefresh = false) => {
     try {
@@ -118,7 +215,6 @@ const AlertCenterPage = () => {
       } else {
         setLoading(true);
       }
-      setError(null);
 
       // Fetch preferences
       let prefsData = { 
@@ -147,9 +243,19 @@ const AlertCenterPage = () => {
         console.log('No locations found');
       }
 
+      // Fetch alert history (NEW!)
+      try {
+        const historyData = await alertsAPI.getAlertHistory(userId, 10);
+        if (historyData.alerts) {
+          setAlertHistory(historyData.alerts);
+        }
+      } catch (err) {
+        console.log('No alert history found');
+        setAlertHistory([]);
+      }
+
     } catch (err) {
       console.error('Failed to load data:', err);
-      setError('Failed to load data');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -202,10 +308,19 @@ const AlertCenterPage = () => {
   const openEditModal = (alertType) => {
     const config = ALERT_TYPES[alertType];
     setEditingAlert(alertType);
-    setEditValues({
-      time: preferences?.[`${alertType}Time`] || config.defaultTime || '07:00',
-      threshold: preferences?.[`${alertType}Threshold`] || config.thresholdDefault || 65,
-    });
+    
+    if (config.hasMultipleTimes) {
+      // News digest - multiple times per day
+      const savedTimes = preferences?.newsDigestTimes || config.defaultTimes || ['07:30', '18:00'];
+      setEditValues({
+        times: Array.isArray(savedTimes) ? [...savedTimes] : ['07:30', '18:00'],
+      });
+    } else {
+      setEditValues({
+        time: preferences?.[`${alertType}Time`] || config.defaultTime || '07:00',
+        threshold: preferences?.[`${alertType}Threshold`] || config.thresholdDefault || 65,
+      });
+    }
   };
 
   /**
@@ -214,11 +329,23 @@ const AlertCenterPage = () => {
   const saveAlertSettings = async () => {
     setSaving(true);
     try {
-      const updates = {
-        ...preferences,
-        [`${editingAlert}Time`]: editValues.time,
-        [`${editingAlert}Threshold`]: editValues.threshold,
-      };
+      const config = ALERT_TYPES[editingAlert];
+      let updates;
+      
+      if (config.hasMultipleTimes) {
+        // News digest - save times array sorted
+        const sortedTimes = [...editValues.times].sort();
+        updates = {
+          ...preferences,
+          newsDigestTimes: sortedTimes,
+        };
+      } else {
+        updates = {
+          ...preferences,
+          [`${editingAlert}Time`]: editValues.time,
+          [`${editingAlert}Threshold`]: editValues.threshold,
+        };
+      }
       
       await preferencesAPI.savePreferences(userId, updates);
       setPreferences(updates);
@@ -228,6 +355,41 @@ const AlertCenterPage = () => {
     } finally {
       setSaving(false);
     }
+  };
+
+  /**
+   * Add a new time slot for news digest
+   */
+  const addTimeSlot = () => {
+    const config = ALERT_TYPES[editingAlert];
+    if (editValues.times.length < (config.maxTimes || 6)) {
+      setEditValues(prev => ({
+        ...prev,
+        times: [...prev.times, '12:00'],
+      }));
+    }
+  };
+
+  /**
+   * Remove a time slot
+   */
+  const removeTimeSlot = (index) => {
+    if (editValues.times.length > 1) {
+      setEditValues(prev => ({
+        ...prev,
+        times: prev.times.filter((_, i) => i !== index),
+      }));
+    }
+  };
+
+  /**
+   * Update a specific time slot
+   */
+  const updateTimeSlot = (index, value) => {
+    setEditValues(prev => ({
+      ...prev,
+      times: prev.times.map((t, i) => i === index ? value : t),
+    }));
   };
 
   // Calculate stats
@@ -348,25 +510,14 @@ const AlertCenterPage = () => {
           )}
         </div>
 
-        {/* Next Alert */}
+        {/* Alerts Sent */}
         <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
           <div className="flex items-center gap-2 text-slate-400 text-sm mb-1">
-            <Clock className="w-4 h-4" />
-            Next Alert
+            <History className="w-4 h-4" />
+            Recent
           </div>
-          {preferences?.alertTypes?.dailyForecast ? (
-            <>
-              <p className="text-lg font-bold text-white">
-                {preferences?.dailyForecastTime || '07:00'}
-              </p>
-              <p className="text-slate-500 text-xs">Daily Forecast</p>
-            </>
-          ) : (
-            <>
-              <p className="text-lg font-bold text-slate-500">—</p>
-              <p className="text-slate-500 text-xs">No scheduled alerts</p>
-            </>
-          )}
+          <p className="text-2xl font-bold text-white">{alertHistory.length}</p>
+          <p className="text-slate-500 text-xs">alerts this week</p>
         </div>
       </div>
 
@@ -414,13 +565,18 @@ const AlertCenterPage = () => {
                   
                   {/* Settings Preview */}
                   {isEnabled && (
-                    <div className="flex items-center gap-3 mt-1">
-                      {alert.hasTime && (
+                    <div className="flex items-center gap-3 mt-1 flex-wrap">
+                      {alert.hasMultipleTimes && (
+                        <span className="text-xs text-slate-400">
+                          🕐 {(preferences?.newsDigestTimes || alert.defaultTimes || []).join(', ')}
+                        </span>
+                      )}
+                      {alert.hasTime && !alert.hasMultipleTimes && (
                         <span className="text-xs text-slate-400">
                           🕐 {customTime}
                         </span>
                       )}
-                      {!alert.hasTime && (
+                      {!alert.hasTime && !alert.hasMultipleTimes && alert.timeLabel && (
                         <span className="text-xs text-slate-400">
                           ⚡ {alert.timeLabel}
                         </span>
@@ -432,10 +588,31 @@ const AlertCenterPage = () => {
                       )}
                     </div>
                   )}
+                  
+                  {/* Test Result Feedback */}
+                  {testResult && testResult.type === alert.id && (
+                    <div className={`text-xs mt-1 ${testResult.success ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {testResult.success ? '✓' : '✗'} {testResult.message}
+                    </div>
+                  )}
                 </div>
 
+                {/* Test Button */}
+                <button
+                  onClick={() => sendTestAlert(alert.id)}
+                  disabled={testingAlert === alert.id}
+                  className="p-2 text-amber-400 hover:text-amber-300 hover:bg-amber-500/20 rounded-lg transition-colors disabled:opacity-50"
+                  title="Send test alert"
+                >
+                  {testingAlert === alert.id ? (
+                    <Loader className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Zap className="w-4 h-4" />
+                  )}
+                </button>
+
                 {/* Edit Button */}
-                {isEnabled && (alert.hasTime || alert.hasThreshold) && (
+                {isEnabled && (alert.hasTime || alert.hasThreshold || alert.hasMultipleTimes) && (
                   <button
                     onClick={() => openEditModal(alert.id)}
                     className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
@@ -465,7 +642,7 @@ const AlertCenterPage = () => {
       </div>
 
       {/* ============================================ */}
-      {/* RECENT HISTORY */}
+      {/* RECENT HISTORY - NOW REAL DATA! */}
       {/* ============================================ */}
       <div className="bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
@@ -481,29 +658,33 @@ const AlertCenterPage = () => {
           </Link>
         </div>
 
-        {mockHistory.length > 0 ? (
+        {alertHistory.length > 0 ? (
           <div className="divide-y divide-slate-800">
-            {mockHistory.map(item => {
-              const alertConfig = ALERT_TYPES[item.type];
+            {alertHistory.slice(0, 5).map((item, index) => {
+              // Map API type to our config
+              const mappedType = ALERT_TYPE_MAP[item.type] || item.type;
+              const alertConfig = ALERT_TYPES[mappedType];
               const Icon = alertConfig?.icon || Bell;
               
               return (
-                <div key={item.id} className="px-5 py-3 flex items-center gap-3">
+                <div key={item.id || index} className="px-5 py-3 flex items-center gap-3">
                   <div 
                     className={`w-8 h-8 rounded-lg flex items-center justify-center ${alertConfig?.bgColor || 'bg-slate-700'}`}
                   >
                     <Icon className="w-4 h-4" style={{ color: alertConfig?.color || '#94a3b8' }} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-white text-sm">{alertConfig?.name || 'Alert'}</p>
-                    <p className="text-slate-500 text-xs">{item.time}</p>
+                    <p className="text-white text-sm">{item.title || alertConfig?.name || 'Alert'}</p>
+                    <p className="text-slate-500 text-xs">{item.timeAgo || formatTimeAgo(item.sentAt)}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-emerald-400 text-sm flex items-center gap-1">
                       <Check className="w-3 h-3" />
-                      {item.status}
+                      Sent
                     </p>
-                    <p className="text-slate-500 text-xs">{item.location}</p>
+                    {item.location && (
+                      <p className="text-slate-500 text-xs">{item.location}</p>
+                    )}
                   </div>
                 </div>
               );
@@ -511,7 +692,11 @@ const AlertCenterPage = () => {
           </div>
         ) : (
           <div className="px-5 py-8 text-center">
+            <History className="w-8 h-8 text-slate-600 mx-auto mb-2" />
             <p className="text-slate-500">No alerts sent yet</p>
+            <p className="text-slate-600 text-sm mt-1">
+              Enable alerts above to start receiving notifications
+            </p>
           </div>
         )}
       </div>
@@ -537,8 +722,53 @@ const AlertCenterPage = () => {
 
             {/* Content */}
             <div className="p-5 space-y-4">
-              {/* Time Setting */}
-              {ALERT_TYPES[editingAlert]?.hasTime && (
+              {/* Multiple Times Setting (News Digest) */}
+              {ALERT_TYPES[editingAlert]?.hasMultipleTimes && (
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <label className="text-sm text-slate-400">
+                      Delivery Times ({editValues.times?.length || 0} per day)
+                    </label>
+                    {(editValues.times?.length || 0) < (ALERT_TYPES[editingAlert]?.maxTimes || 6) && (
+                      <button
+                        onClick={addTimeSlot}
+                        className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300"
+                      >
+                        <Plus className="w-3 h-3" />
+                        Add time
+                      </button>
+                    )}
+                  </div>
+                  
+                  <div className="space-y-2">
+                    {editValues.times?.map((time, index) => (
+                      <div key={index} className="flex items-center gap-2">
+                        <input
+                          type="time"
+                          value={time}
+                          onChange={(e) => updateTimeSlot(index, e.target.value)}
+                          className="flex-1 px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:ring-2 focus:ring-cyan-500"
+                        />
+                        {editValues.times.length > 1 && (
+                          <button
+                            onClick={() => removeTimeSlot(index)}
+                            className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/20 rounded-lg transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <p className="text-slate-500 text-xs mt-3">
+                    Add up to {ALERT_TYPES[editingAlert]?.maxTimes || 6} delivery times. Times are in your local timezone.
+                  </p>
+                </div>
+              )}
+
+              {/* Time Setting (for single-time alerts) */}
+              {ALERT_TYPES[editingAlert]?.hasTime && !ALERT_TYPES[editingAlert]?.hasMultipleTimes && (
                 <div>
                   <label className="block text-sm text-slate-400 mb-2">
                     {ALERT_TYPES[editingAlert]?.timeLabel || 'Time'}
@@ -566,12 +796,12 @@ const AlertCenterPage = () => {
                   />
                   {editingAlert === 'stargazingAlerts' && (
                     <p className="text-slate-500 text-xs mt-1">
-                      SkyScore 0-100. Higher = better conditions.
+                      SkyScore 0-100. Higher = better conditions. Recommended: 65+
                     </p>
                   )}
                   {editingAlert === 'auroraAlerts' && (
                     <p className="text-slate-500 text-xs mt-1">
-                      Kp Index 0-9. Higher = stronger aurora. 5+ visible in Ireland.
+                      AuroraScore 0-100. Factors in Kp, clouds, darkness. Recommended: 50+
                     </p>
                   )}
                 </div>
@@ -605,5 +835,27 @@ const AlertCenterPage = () => {
     </div>
   );
 };
+
+/**
+ * Format time ago (fallback if API doesn't provide it)
+ */
+function formatTimeAgo(dateString) {
+  if (!dateString) return '';
+  
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now - date;
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins} min ago`;
+  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) return `${diffDays} days ago`;
+  
+  return date.toLocaleDateString('en-IE', { day: 'numeric', month: 'short' });
+}
 
 export default AlertCenterPage;

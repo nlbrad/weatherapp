@@ -1,10 +1,10 @@
 /**
- * AuroraAlert.js - Northern Lights Alert System
+ * AuroraAlert.js - Northern Lights Alert System (UPDATED)
  * 
- * Monitors Kp index and weather conditions to alert users
- * when aurora might be visible in Ireland.
- * 
- * Uses EXISTING AuroraScore module (DRY!)
+ * CHANGES:
+ * - Uses persistent AlertTracker for deduplication (no more repeated alerts!)
+ * - Uses AuroraScore properly (score >= threshold, not just Kp >= 5)
+ * - Records sent alerts for history feature
  * 
  * Triggers:
  * - HTTP: POST /api/aurora-alert (manual test)
@@ -16,7 +16,7 @@
 const { app } = require('@azure/functions');
 const { TableClient } = require('@azure/data-tables');
 
-// Use EXISTING AuroraScore module (DRY!)
+// Use EXISTING AuroraScore module
 const { 
     computeAuroraScore, 
     shouldAlert, 
@@ -26,8 +26,12 @@ const {
 // User location helper
 const { getUserLocation } = require('../utils/UserLocationHelper');
 
-// Track sent alerts to avoid spam
-const sentAlerts = new Map();
+// NEW: Persistent alert tracking
+const { hasRecentAlert, recordAlert } = require('../utils/AlertTracker');
+
+// Default threshold for aurora alerts
+const DEFAULT_AURORA_THRESHOLD = 50; // AuroraScore threshold (not Kp!)
+const AURORA_COOLDOWN_HOURS = 6; // Don't re-alert for same Kp level within 6 hours
 
 // ============================================
 // HTTP Trigger - Manual testing
@@ -40,7 +44,7 @@ app.http('AuroraAlert', {
         context.log('AuroraAlert triggered via HTTP');
         
         try {
-            let chatId, lat, lon, locationName, force;
+            let chatId, lat, lon, locationName, force, threshold;
             
             if (request.method === 'POST') {
                 const body = await request.json().catch(() => ({}));
@@ -49,43 +53,47 @@ app.http('AuroraAlert', {
                 lon = body.lon ?? -6.2603;
                 locationName = body.locationName ?? 'Dublin';
                 force = body.force === true;
+                threshold = body.threshold ?? DEFAULT_AURORA_THRESHOLD;
             } else {
                 chatId = request.query.get('chatId');
                 lat = parseFloat(request.query.get('lat')) || 53.3498;
                 lon = parseFloat(request.query.get('lon')) || -6.2603;
                 locationName = request.query.get('location') || 'Dublin';
                 force = request.query.get('force') === 'true';
+                threshold = parseInt(request.query.get('threshold')) || DEFAULT_AURORA_THRESHOLD;
             }
             
             // Generate aurora report
             const report = await generateAuroraReport(lat, lon, locationName, context);
             
-            // Check if we should alert
-            const alertDecision = shouldAlert(report.score, report.kpIndex, report.cloudCover);
+            // Check if we should alert based on AuroraScore (not just Kp!)
+            const shouldSend = report.score >= threshold;
             
             // If chatId provided and (should alert OR forced), send to Telegram
-            if (chatId && (alertDecision.shouldSend || force)) {
+            if (chatId && (shouldSend || force)) {
                 const sent = await sendTelegramMessage(chatId, report.message);
                 return {
                     status: 200,
                     jsonBody: {
                         success: sent,
                         messageSent: sent,
-                        shouldAlert: alertDecision.shouldSend,
+                        shouldAlert: shouldSend,
                         forced: force,
+                        scoreThreshold: threshold,
                         ...report.summary
                     }
                 };
             }
             
-            // Return preview
+            // Return report without sending
             return {
                 status: 200,
                 jsonBody: {
-                    message: report.message,
-                    shouldAlert: alertDecision.shouldSend,
-                    alertReason: alertDecision.message || 'Conditions not favorable',
-                    ...report.summary
+                    preview: true,
+                    shouldAlert: shouldSend,
+                    scoreThreshold: threshold,
+                    ...report.summary,
+                    message: report.message
                 }
             };
             
@@ -100,7 +108,7 @@ app.http('AuroraAlert', {
 });
 
 // ============================================
-// Timer Trigger - Check every hour
+// Timer Trigger - Automatic checks
 // ============================================
 app.timer('AuroraAlertTimer', {
     schedule: '0 0 * * * *',  // Every hour
@@ -109,7 +117,7 @@ app.timer('AuroraAlertTimer', {
         
         try {
             const results = await checkAndSendAuroraAlerts(context);
-            context.log(`Aurora check: Kp=${results.kpIndex}, ${results.sent} alerts sent`);
+            context.log(`Aurora check complete: ${results.sent} sent, ${results.skipped} skipped`);
         } catch (error) {
             context.error('Error in AuroraAlertTimer:', error);
         }
@@ -117,7 +125,7 @@ app.timer('AuroraAlertTimer', {
 });
 
 // ============================================
-// HTTP Trigger - Test batch processor
+// Batch Test Endpoint
 // ============================================
 app.http('AuroraAlertBatchTest', {
     methods: ['POST', 'GET'],
@@ -153,22 +161,20 @@ app.http('AuroraAlertBatchTest', {
 // Core: Generate Aurora Report
 // ============================================
 async function generateAuroraReport(lat, lon, locationName, context) {
-    // Fetch Kp index and weather in parallel
-    const [kpData, weatherData] = await Promise.all([
-        fetchKpIndex(context),
-        fetchWeatherData(lat, lon, context)
-    ]);
+    // Fetch Kp data
+    const kpData = await fetchKpIndex(context);
     
-    const current = weatherData?.current || {};
-    const clouds = current.clouds ?? 50;
+    // Fetch weather for cloud cover
+    const weatherData = await fetchWeatherData(lat, lon, context);
+    const clouds = weatherData?.current?.clouds ?? 50;
     
-    // Calculate sun position (simplified)
+    // Calculate if it's dark
     const now = new Date();
     const hour = now.getUTCHours();
     const isDark = hour >= 21 || hour <= 5;  // Rough estimate
     const sunAltitude = isDark ? -30 : 10;   // Simplified
     
-    // Use EXISTING AuroraScore computation
+    // Use AuroraScore computation
     const scoreResult = computeAuroraScore({
         kpIndex: kpData.current,
         latitude: lat,
@@ -217,17 +223,17 @@ function buildAuroraMessage(data) {
     
     // Header
     const kpInfo = KP_DESCRIPTIONS[Math.min(Math.floor(kpData.current), 9)];
-    const headerEmoji = kpData.current >= 5 ? '🌌' : '🌙';
+    const headerEmoji = scoreResult.score >= 65 ? '🌌' : '🌙';
     
     lines.push(`${headerEmoji} *Aurora Alert - ${locationName}*`);
     lines.push('');
     
-    // Score
+    // Score (this is what we use for alerting now!)
     const scoreEmoji = scoreResult.score >= 70 ? '🟢' : scoreResult.score >= 50 ? '🟡' : '🔴';
     lines.push(`${scoreEmoji} *AuroraScore: ${scoreResult.score}/100* - ${scoreResult.rating}`);
     lines.push('');
     
-    // Kp Index (most important)
+    // Kp Index
     const kpEmoji = kpData.current >= 6 ? '🔥' : kpData.current >= 5 ? '⚡' : kpData.current >= 4 ? '📈' : '📊';
     lines.push(`${kpEmoji} *Kp Index: ${kpData.current}* (${kpInfo.level})`);
     lines.push(`   _${kpInfo.description}_`);
@@ -241,85 +247,49 @@ function buildAuroraMessage(data) {
     }
     lines.push('');
     
-    // Kp Forecast if available
-    if (kpData.forecast && kpData.forecast.length > 0) {
-        lines.push('📅 *Kp Forecast:*');
-        const next3hr = kpData.forecast[0] ?? kpData.current;
-        const next6hr = kpData.forecast[1] ?? kpData.forecast[0] ?? kpData.current;
-        lines.push(`   Next 3hr: Kp ${next3hr} | Next 6hr: Kp ${next6hr}`);
-        lines.push('');
-    }
-    
-    // Sky conditions
-    lines.push('🌤️ *Conditions:*');
-    lines.push(`   ☁️ Cloud cover: ${clouds}%`);
-    if (clouds <= 25) {
-        lines.push('   _✨ Clear skies - excellent!_');
-    } else if (clouds <= 50) {
-        lines.push('   _⛅ Partly cloudy - watch for breaks_');
-    } else {
-        lines.push('   _☁️ Cloudy - aurora may be hidden_');
-    }
-    
-    // Darkness
+    // Conditions
+    lines.push('📋 *Conditions:*');
     if (isDark) {
-        lines.push('   🌙 Dark enough for viewing');
+        lines.push(`   ✅ Dark enough for viewing`);
     } else {
-        lines.push('   ☀️ Wait for darkness');
+        lines.push(`   ⚠️ Not dark yet - wait until after sunset`);
+    }
+    
+    if (clouds <= 25) {
+        lines.push(`   ✅ Clear skies (${clouds}% clouds)`);
+    } else if (clouds <= 50) {
+        lines.push(`   🟡 Partly cloudy (${clouds}%) - may have gaps`);
+    } else {
+        lines.push(`   ❌ Cloudy (${clouds}%) - visibility limited`);
     }
     lines.push('');
     
     // Recommendation
-    lines.push('💡 *Recommendation:*');
-    lines.push(`_${scoreResult.recommendation}_`);
-    lines.push('');
-    
-    // Viewing tips
-    if (scoreResult.score >= 50) {
-        lines.push('📍 *Best viewing:*');
-        lines.push('• Find a dark location away from city lights');
-        lines.push('• Look north towards the horizon');
-        lines.push('• Give your eyes 20+ mins to adjust');
-        lines.push('• Check between 10pm - 2am');
-        lines.push('');
+    if (scoreResult.recommendation) {
+        lines.push(`💡 _${scoreResult.recommendation}_`);
     }
-    
-    // Footer
-    lines.push('─────────────');
-    lines.push('_Source: NOAA Space Weather Prediction Center_');
     
     return lines.join('\n');
 }
 
 // ============================================
-// Check and send alerts to all users
+// Core: Check All Users and Send Alerts
 // ============================================
 async function checkAndSendAuroraAlerts(context, force = false) {
     const results = {
-        kpIndex: 0,
         processed: 0,
         sent: 0,
         skipped: 0,
+        belowThreshold: 0,
+        alreadySent: 0,
         errors: []
     };
     
-    // Fetch current Kp index
+    // First, check global Kp level - if too low, skip everything
     const kpData = await fetchKpIndex(context);
-    results.kpIndex = kpData.current;
-    
-    // Quick check: if Kp is too low, don't bother checking users
-    // Ireland needs Kp 5+ typically
     if (kpData.current < 4 && !force) {
-        context.log(`Kp ${kpData.current} too low for Ireland - skipping user check`);
-        results.skipped = 'Kp too low';
-        return results;
-    }
-    
-    // Check if we already sent an alert for this Kp level recently
-    const alertKey = `kp-${Math.floor(kpData.current)}`;
-    if (!force && hasRecentAlert(alertKey)) {
-        context.log('Already sent alert for this Kp level recently');
-        results.skipped = 'Recent alert sent';
+        context.log(`Kp index ${kpData.current} too low for alerts, skipping batch`);
+        results.skipped = 'Kp too low globally';
         return results;
     }
     
@@ -362,33 +332,71 @@ async function checkAndSendAuroraAlerts(context, force = false) {
             }
             
             const chatId = user.telegramChatId || prefs.telegramChatId;
-            
-            // Get user's saved location from UserLocations table
-            const userLocation = await getUserLocation(userId, context);
-            const lat = userLocation.latitude;
-            const lon = userLocation.longitude;
-            const locationName = userLocation.locationName;
+            const threshold = prefs.auroraAlertsThreshold || DEFAULT_AURORA_THRESHOLD;
             
             if (!chatId) {
                 results.skipped++;
                 continue;
             }
             
+            // Get user's saved location
+            const userLocation = await getUserLocation(userId, context);
+            const lat = userLocation.latitude;
+            const lon = userLocation.longitude;
+            const locationName = userLocation.locationName;
+            
             try {
+                // Generate report for this user's location
                 const report = await generateAuroraReport(lat, lon, locationName, context);
-                const alertDecision = shouldAlert(report.score, report.kpIndex, report.cloudCover);
                 
-                if (alertDecision.shouldSend || force) {
-                    const sent = await sendTelegramMessage(chatId, report.message);
-                    if (sent) {
-                        results.sent++;
-                        markAlertSent(alertKey);
-                    } else {
-                        results.errors.push({ userId: user.rowKey, error: 'Send failed' });
-                    }
+                // Check if score meets threshold
+                if (report.score < threshold && !force) {
+                    results.belowThreshold++;
+                    context.log(`User ${userId}: AuroraScore ${report.score} below threshold ${threshold}`);
+                    continue;
                 }
+                
+                // Check if we already sent this alert (PERSISTENT CHECK!)
+                const alertData = {
+                    kpIndex: report.kpIndex,
+                    score: report.score,
+                };
+                
+                const alreadySent = await hasRecentAlert(
+                    userId, 
+                    'aurora', 
+                    alertData, 
+                    AURORA_COOLDOWN_HOURS
+                );
+                
+                if (alreadySent && !force) {
+                    results.alreadySent++;
+                    context.log(`User ${userId}: Aurora alert already sent for Kp ${Math.round(report.kpIndex)}`);
+                    continue;
+                }
+                
+                // Send the alert!
+                const sent = await sendTelegramMessage(chatId, report.message);
+                
+                if (sent) {
+                    results.sent++;
+                    
+                    // Record that we sent this alert (for deduplication + history)
+                    await recordAlert(userId, 'aurora', {
+                        kpIndex: report.kpIndex,
+                        score: report.score,
+                        title: `Aurora Alert (Kp ${report.kpIndex})`,
+                        summary: `AuroraScore: ${report.score}/100 - ${report.rating}`,
+                        location: locationName,
+                    });
+                    
+                    context.log(`User ${userId}: Aurora alert sent (Score: ${report.score}, Kp: ${report.kpIndex})`);
+                } else {
+                    results.errors.push({ userId, error: 'Send failed' });
+                }
+                
             } catch (err) {
-                results.errors.push({ userId: user.rowKey, error: err.message });
+                results.errors.push({ userId, error: err.message });
             }
         }
         
@@ -401,52 +409,31 @@ async function checkAndSendAuroraAlerts(context, force = false) {
 }
 
 // ============================================
-// Kp Index Fetching (NOAA)
+// External API calls
 // ============================================
+
 async function fetchKpIndex(context) {
-    // NOAA Space Weather Prediction Center - Planetary K-index
-    const url = 'https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json';
-    
     try {
-        const response = await fetch(url, {
-            signal: AbortSignal.timeout(10000)
-        });
-        
-        if (!response.ok) {
-            context.log(`NOAA API error: ${response.status}`);
-            return { current: 3, forecast: [3, 3, 3] };
-        }
+        // NOAA provides Kp data
+        const response = await fetch('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json');
+        if (!response.ok) throw new Error('NOAA API error');
         
         const data = await response.json();
+        // Data format: [[timestamp, Kp, ...], ...]
+        // Get the most recent entry
+        const recent = data[data.length - 1];
+        const current = parseFloat(recent[1]) || 3;
         
-        // Data format: array of [timestamp, Kp, a_running, station_count]
-        // Skip header row, get latest values
-        if (!Array.isArray(data) || data.length < 2) {
-            return { current: 3, forecast: [3, 3, 3] };
-        }
+        // Get next few entries for forecast
+        const forecast = data.slice(-4).map(d => parseFloat(d[1]) || 3);
         
-        // Get latest Kp (last row)
-        const latest = data[data.length - 1];
-        const currentKp = parseFloat(latest[1]) || 3;
-        
-        // Get last few values for "forecast" (recent trend)
-        const recentKps = data.slice(-4).map(row => parseFloat(row[1]) || 3);
-        
-        return {
-            current: currentKp,
-            forecast: recentKps,
-            timestamp: latest[0]
-        };
-        
+        return { current, forecast };
     } catch (error) {
-        context.error('Error fetching Kp index:', error.message);
+        context.warn('Failed to fetch Kp index:', error.message);
         return { current: 3, forecast: [3, 3, 3] };
     }
 }
 
-// ============================================
-// Weather Data
-// ============================================
 async function fetchWeatherData(lat, lon, context) {
     const apiKey = process.env.OPENWEATHER_API_KEY;
     if (!apiKey) return null;
@@ -458,30 +445,8 @@ async function fetchWeatherData(lat, lon, context) {
         if (!response.ok) return null;
         return await response.json();
     } catch (error) {
-        context.error('Weather fetch error:', error.message);
+        context.warn('Weather fetch error:', error.message);
         return null;
-    }
-}
-
-// ============================================
-// Alert Tracking (avoid spam)
-// ============================================
-function hasRecentAlert(key) {
-    const sent = sentAlerts.get(key);
-    if (!sent) return false;
-    
-    // Don't re-alert within 6 hours for same Kp level
-    const sixHoursAgo = Date.now() - (6 * 60 * 60 * 1000);
-    return sent > sixHoursAgo;
-}
-
-function markAlertSent(key) {
-    sentAlerts.set(key, Date.now());
-    
-    // Clean old entries
-    const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
-    for (const [k, v] of sentAlerts) {
-        if (v < oneDayAgo) sentAlerts.delete(k);
     }
 }
 

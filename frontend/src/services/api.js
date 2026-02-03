@@ -2,16 +2,13 @@
  * API Service - Weather Alert System
  * 
  * All API calls to the backend
- * Updated with:
- * - Combined weather endpoint (GetWeatherData)
- * - Lat/lon support for reliable lookups
+ * 
+ * UPDATED: Added getAlertHistory to alertsAPI
  */
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://weather-alert-backend-cxc6ghhhagd7dgb8.westeurope-01.azurewebsites.net/api';
 
-/*const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api'
-*/
-
+// Weather API
 export const weatherAPI = {
   /**
    * Get ALL weather data in a single call (preferred method)
@@ -23,8 +20,6 @@ export const weatherAPI = {
     }
     
     const url = `${API_BASE_URL}/GetWeatherData?lat=${lat}&lon=${lon}`;
-    console.log('🌐 Weather API (combined):', url);
-    
     const response = await fetch(url);
     if (!response.ok) throw new Error('Failed to fetch weather data');
     return response.json();
@@ -51,7 +46,7 @@ export const weatherAPI = {
     return response.json();
   },
 
-  // Legacy: Get forecast - supports city/country OR lat/lon
+  // Legacy: Get forecast
   getForecast: async (city, country = '', lat = null, lon = null) => {
     let url;
     
@@ -119,11 +114,28 @@ export const locationsAPI = {
   }
 };
 
-// Alerts API
+// Alerts API - UPDATED with getAlertHistory
 export const alertsAPI = {
+  // Trigger alert check (for testing)
   checkAlerts: async () => {
     const response = await fetch(`${API_BASE_URL}/checkalerts`);
     if (!response.ok) throw new Error('Failed to trigger alert check');
+    return response.json();
+  },
+
+  // NEW: Get alert history for a user
+  getAlertHistory: async (userId, limit = 20, alertType = null) => {
+    let url = `${API_BASE_URL}/alert-history?userId=${encodeURIComponent(userId)}&limit=${limit}`;
+    if (alertType) {
+      url += `&type=${encodeURIComponent(alertType)}`;
+    }
+    
+    const response = await fetch(url);
+    if (!response.ok) {
+      // Return empty on error (API might not exist yet)
+      console.warn('Alert history API not available');
+      return { alerts: [] };
+    }
     return response.json();
   }
 };
@@ -160,7 +172,7 @@ export const preferencesAPI = {
       },
       body: JSON.stringify({
         chatId: chatId,
-        message: '🧪 *Test Message*\n\nYour Telegram notifications are working! ✅\n\n_Sent from Weather Alert Settings_'
+        message: '🧪 *Test Message*\n\nYour Telegram notifications are working! ✅\n\n_Sent from OmniAlert_'
       }),
     });
     if (!response.ok) throw new Error('Failed to send test message');
@@ -176,7 +188,7 @@ export const preferencesAPI = {
       },
       body: JSON.stringify({
         phoneNumber: phoneNumber,
-        message: '🧪 Test Message\n\nYour WhatsApp notifications are working! ✅\n\nSent from Weather Alert Settings'
+        message: '🧪 Test Message\n\nYour WhatsApp notifications are working! ✅\n\nSent from OmniAlert'
       }),
     });
     if (!response.ok) throw new Error('Failed to send test message');

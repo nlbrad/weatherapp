@@ -248,7 +248,7 @@ Creates optimized production build in `build/` folder.
 **Deploy:**
 ```bash
 npx @azure/static-web-apps-cli deploy ./build \
-  --deployment-token YOUR_TOKEN_HERE \
+  --deployment-token bba0b42be49b892e9647064ca4b7a5351c823e909f164fe0937388f1fb33323d01-3bd13d09-3b3a-4757-a625-8a452714a64a0031730003e62103 \
   --env production
 ```
 

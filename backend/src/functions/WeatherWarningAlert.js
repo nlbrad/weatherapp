@@ -1,17 +1,14 @@
 /**
- * WeatherWarningAlert.js - Dedicated weather warning alerts
+ * WeatherWarningAlert.js - Weather Warning Alert System
  * 
- * Monitors MeteoAlarm for new Yellow/Orange/Red warnings
- * and sends detailed alerts to users.
+ * FIXES:
+ * - Full description text (no more truncation!)
+ * - Deduplicates similar warnings (same type/severity)
+ * - Uses persistent AlertTracker
  * 
  * Triggers:
  * - HTTP: POST /api/weather-warning (manual test)
  * - Timer: Every 30 mins to check for new warnings
- * 
- * Features:
- * - Tracks sent warnings to avoid duplicates
- * - Only alerts for Yellow (level 2) and above
- * - Detailed message with description and advice
  */
 
 const { app } = require('@azure/functions');
@@ -20,12 +17,14 @@ const { TableClient } = require('@azure/data-tables');
 // MeteoAlarm service
 const { 
     getIrelandWarnings, 
-    formatWarningsDetailed,
     getHighestSeverity 
 } = require('../utils/MeteoAlarm');
 
-// Track sent warnings (in production, use database)
-const sentWarnings = new Map();
+// Persistent alert tracking
+const { hasRecentAlert, recordAlert } = require('../utils/AlertTracker');
+
+// Cooldown: Don't re-send same warning within 12 hours
+const WARNING_COOLDOWN_HOURS = 12;
 
 // ============================================
 // HTTP Trigger - Manual testing
@@ -49,24 +48,24 @@ app.http('WeatherWarningAlert', {
                 force = request.query.get('force') === 'true';
             }
             
-            // Fetch current warnings
-            const warnings = await getIrelandWarnings();
+            // Fetch and deduplicate warnings
+            const rawWarnings = await getIrelandWarnings();
+            const warnings = deduplicateWarnings(rawWarnings);
             
-            context.log(`Found ${warnings.length} active warnings (Yellow+)`);
+            context.log(`Found ${rawWarnings.length} raw, ${warnings.length} after dedup`);
             
-            // If no warnings, return early
             if (warnings.length === 0) {
                 return {
                     status: 200,
                     jsonBody: {
-                        success: true,
-                        message: 'No active warnings',
-                        warningCount: 0
+                        warningCount: 0,
+                        message: 'No active weather warnings for Ireland.',
+                        warnings: []
                     }
                 };
             }
             
-            // Build detailed message
+            // Build message
             const message = buildWarningMessage(warnings);
             
             // If chatId provided, send to Telegram
@@ -78,16 +77,20 @@ app.http('WeatherWarningAlert', {
                         success: sent,
                         messageSent: sent,
                         warningCount: warnings.length,
-                        highestSeverity: getHighestSeverity(warnings)
+                        warnings: warnings.map(w => ({
+                            type: w.type,
+                            severity: w.severityName,
+                            regions: w.regionsText
+                        }))
                     }
                 };
             }
             
-            // Otherwise return preview
+            // Return preview
             return {
                 status: 200,
                 jsonBody: {
-                    message,
+                    preview: true,
                     warningCount: warnings.length,
                     warnings: warnings.map(w => ({
                         type: w.type,
@@ -95,7 +98,8 @@ app.http('WeatherWarningAlert', {
                         regions: w.regionsText,
                         onset: w.onset,
                         expires: w.expires
-                    }))
+                    })),
+                    message: message
                 }
             };
             
@@ -110,16 +114,16 @@ app.http('WeatherWarningAlert', {
 });
 
 // ============================================
-// Timer Trigger - Check every 30 mins
+// Timer Trigger - Every 30 mins
 // ============================================
 app.timer('WeatherWarningTimer', {
-    schedule: '0 */30 * * * *',  // Every 30 minutes
+    schedule: '0 */30 * * * *',
     handler: async (timer, context) => {
         context.log('WeatherWarningTimer triggered at', new Date().toISOString());
         
         try {
             const results = await checkAndSendWarnings(context);
-            context.log(`Warning check: ${results.newWarnings} new, ${results.sent} sent`);
+            context.log(`Warning check: ${results.sent} sent, ${results.alreadySent} already sent`);
         } catch (error) {
             context.error('Error in WeatherWarningTimer:', error);
         }
@@ -127,7 +131,7 @@ app.timer('WeatherWarningTimer', {
 });
 
 // ============================================
-// HTTP Trigger - Test batch processor
+// HTTP Trigger - Batch test
 // ============================================
 app.http('WeatherWarningBatchTest', {
     methods: ['POST', 'GET'],
@@ -144,7 +148,6 @@ app.http('WeatherWarningBatchTest', {
                 status: 200,
                 jsonBody: {
                     success: true,
-                    message: 'Batch process completed',
                     forced: force,
                     ...results
                 }
@@ -160,7 +163,61 @@ app.http('WeatherWarningBatchTest', {
 });
 
 // ============================================
-// Core: Build Warning Message
+// Deduplicate Warnings
+// ============================================
+/**
+ * Remove duplicate warnings (same type + severity)
+ * Keep the one with latest expiry or most regions
+ */
+function deduplicateWarnings(warnings) {
+    if (!warnings || warnings.length === 0) return [];
+    
+    const seen = new Map();
+    
+    for (const warning of warnings) {
+        const key = `${warning.type}-${warning.severityLevel}`;
+        
+        if (!seen.has(key)) {
+            seen.set(key, warning);
+        } else {
+            const existing = seen.get(key);
+            // Keep the one that expires later or covers more regions
+            const existingExpires = new Date(existing.expires || 0);
+            const newExpires = new Date(warning.expires || 0);
+            
+            if (newExpires > existingExpires) {
+                // Merge regions if different
+                if (warning.regionsText !== existing.regionsText) {
+                    warning.regionsText = mergeRegions(existing.regionsText, warning.regionsText);
+                }
+                seen.set(key, warning);
+            } else if (warning.regionsText && warning.regionsText !== existing.regionsText) {
+                // Same expiry but different regions - merge
+                existing.regionsText = mergeRegions(existing.regionsText, warning.regionsText);
+            }
+        }
+    }
+    
+    return Array.from(seen.values());
+}
+
+/**
+ * Merge region strings, removing duplicates
+ */
+function mergeRegions(regions1, regions2) {
+    if (!regions1) return regions2;
+    if (!regions2) return regions1;
+    
+    const all = new Set([
+        ...regions1.split(', '),
+        ...regions2.split(', ')
+    ]);
+    
+    return Array.from(all).join(', ');
+}
+
+// ============================================
+// Build Warning Message (FULL DESCRIPTION!)
 // ============================================
 function buildWarningMessage(warnings) {
     if (!warnings || warnings.length === 0) {
@@ -169,74 +226,46 @@ function buildWarningMessage(warnings) {
     
     const lines = [];
     
-    // Header with highest severity
+    // Header
     const highest = getHighestSeverity(warnings);
-    const headerEmoji = highest.level >= 4 ? '🚨' : highest.level >= 3 ? '⚠️' : '⚠️';
+    const headerEmoji = highest.level >= 4 ? '🚨' : '⚠️';
     
     lines.push(`${headerEmoji} *WEATHER WARNING*`);
     lines.push('');
     
-    // Group warnings by type for cleaner display
-    const byType = {};
-    for (const w of warnings) {
-        if (!byType[w.type]) byType[w.type] = [];
-        byType[w.type].push(w);
-    }
-    
-    for (const [type, typeWarnings] of Object.entries(byType)) {
-        // Get highest severity for this type
-        const highestOfType = typeWarnings.reduce((max, w) => 
-            w.severityLevel > max.severityLevel ? w : max
-        );
-        
-        const emoji = highestOfType.emoji || '⚠️';
-        lines.push(`${highestOfType.severityColor} *${highestOfType.severityName} - ${type}*`);
+    for (const warning of warnings) {
+        const emoji = getWarningEmoji(warning.type);
+        lines.push(`${warning.severityColor} *${warning.severityName} - ${warning.type}* ${emoji}`);
         
         // Regions
-        const allRegions = typeWarnings.map(w => w.regionsText).filter(Boolean);
-        const uniqueRegions = [...new Set(allRegions)];
-        if (uniqueRegions.length > 0 && !uniqueRegions.includes('All areas')) {
-            // Combine and dedupe region text
-            const regionText = uniqueRegions.length === 1 
-                ? uniqueRegions[0]
-                : uniqueRegions.slice(0, 2).join('; ');
-            lines.push(`📍 ${regionText}`);
+        if (!warning.isNationwide && warning.regionsText) {
+            lines.push(`   📍 ${warning.regionsText}`);
+        } else {
+            lines.push('   📍 All of Ireland');
         }
         
-        // Time range (earliest onset to latest expiry)
-        const onsets = typeWarnings.map(w => w.onset).filter(Boolean);
-        const expires = typeWarnings.map(w => w.expires).filter(Boolean);
-        if (onsets.length > 0 && expires.length > 0) {
-            const earliestOnset = new Date(Math.min(...onsets.map(d => d.getTime())));
-            const latestExpiry = new Date(Math.max(...expires.map(d => d.getTime())));
-            lines.push(`⏰ ${formatDateTime(earliestOnset)} - ${formatDateTime(latestExpiry)}`);
+        // Timing
+        if (warning.onset && warning.expires) {
+            const onsetStr = formatDateTime(warning.onset);
+            const expiresStr = formatDateTime(warning.expires);
+            lines.push(`   ⏰ ${onsetStr} - ${expiresStr}`);
         }
         
-        // Description (from highest severity warning)
-        if (highestOfType.description && highestOfType.description !== 'None') {
-            lines.push('');
-            lines.push(`_${highestOfType.description}_`);
+        // FULL description - no truncation!
+        if (warning.description) {
+            lines.push(`   _${warning.description}_`);
         }
         
         lines.push('');
     }
     
-    // What to expect based on warning types
-    const advice = getWarningAdvice(warnings);
-    if (advice.length > 0) {
-        lines.push('⚠️ *What to expect:*');
-        advice.forEach(a => lines.push(`• ${a}`));
-        lines.push('');
+    // Advice
+    const advice = getAdvice(highest);
+    if (advice) {
+        lines.push('💡 ' + advice);
     }
     
-    // General tip based on highest severity
-    const tip = getWarningTip(highest);
-    if (tip) {
-        lines.push(`💡 _${tip}_`);
-        lines.push('');
-    }
-    
-    // Source
+    lines.push('');
     lines.push('─────────────');
     lines.push('_Source: Met Éireann via MeteoAlarm_');
     
@@ -244,152 +273,137 @@ function buildWarningMessage(warnings) {
 }
 
 /**
- * Get advice based on warning types
+ * Get emoji for warning type
  */
-function getWarningAdvice(warnings) {
-    const advice = [];
-    const types = new Set(warnings.map(w => w.type.toLowerCase()));
-    const maxSeverity = Math.max(...warnings.map(w => w.severityLevel));
-    
-    if (types.has('wind')) {
-        advice.push('Dangerous driving conditions, especially on exposed routes');
-        if (maxSeverity >= 3) {
-            advice.push('Risk of fallen trees and structural damage');
-            advice.push('Potential power outages');
-        }
-    }
-    
-    if (types.has('rain')) {
-        advice.push('Surface water and localised flooding possible');
-        if (maxSeverity >= 3) {
-            advice.push('Rivers may overflow, avoid low-lying areas');
-        }
-    }
-    
-    if (types.has('snow') || types.has('snow-ice')) {
-        advice.push('Hazardous driving conditions');
-        advice.push('Allow extra time for journeys');
-        if (maxSeverity >= 3) {
-            advice.push('Travel may become impossible');
-        }
-    }
-    
-    if (types.has('fog')) {
-        advice.push('Significantly reduced visibility');
-        advice.push('Drive with fog lights, reduce speed');
-    }
-    
-    if (types.has('thunderstorm')) {
-        advice.push('Lightning strikes possible');
-        advice.push('Avoid open areas and tall objects');
-    }
-    
-    if (types.has('extreme high temperature') || types.has('heat')) {
-        advice.push('Stay hydrated and avoid prolonged sun exposure');
-        advice.push('Check on vulnerable neighbours');
-    }
-    
-    if (types.has('extreme low temperature') || types.has('cold')) {
-        advice.push('Risk of ice on roads and paths');
-        advice.push('Protect pipes from freezing');
-    }
-    
-    if (types.has('coastal event') || types.has('coastal')) {
-        advice.push('High waves and dangerous coastal conditions');
-        advice.push('Stay away from exposed coasts');
-    }
-    
-    return advice.slice(0, 4); // Max 4 advice items
+function getWarningEmoji(type) {
+    const emojis = {
+        'Wind': '💨',
+        'Rain': '🌧️',
+        'Snow': '❄️',
+        'Ice': '🧊',
+        'Snow/Ice': '❄️',
+        'Thunderstorm': '⛈️',
+        'Fog': '🌫️',
+        'High Temperature': '🌡️',
+        'Low Temperature': '🥶',
+        'Coastal': '🌊',
+        'Flooding': '💧',
+    };
+    return emojis[type] || '⚠️';
 }
 
 /**
- * Get general tip based on severity
+ * Get advice based on severity
  */
-function getWarningTip(highest) {
+function getAdvice(highest) {
     if (highest.level >= 4) {
-        return 'Red warning: Take action now. Avoid all unnecessary travel.';
+        return '*Red warning: Take action now. Only travel if absolutely necessary.*';
+    } else if (highest.level >= 3) {
+        return '*Orange warning: Be prepared. Disruption likely.*';
+    } else if (highest.level >= 2) {
+        return '_Yellow warning: Be aware. Some disruption possible._';
     }
-    if (highest.level >= 3) {
-        return 'Orange warning: Be prepared. Only travel if necessary.';
-    }
-    return 'Yellow warning: Stay aware and plan ahead.';
+    return null;
+}
+
+/**
+ * Format datetime
+ */
+function formatDateTime(dateString) {
+    const date = new Date(dateString);
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const isTomorrow = date.toDateString() === tomorrow.toDateString();
+    
+    const time = date.toLocaleTimeString('en-IE', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: false
+    });
+    
+    if (isToday) return `Today ${time}`;
+    if (isTomorrow) return `Tomorrow ${time}`;
+    
+    return date.toLocaleDateString('en-IE', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+    });
 }
 
 // ============================================
-// Check for new warnings and send alerts
+// Check and Send to All Users
 // ============================================
 async function checkAndSendWarnings(context, force = false) {
-    const connectionString = process.env.AzureWebJobsStorage;
-    
     const results = {
-        totalWarnings: 0,
-        newWarnings: 0,
+        warningCount: 0,
         processed: 0,
         sent: 0,
+        alreadySent: 0,
         skipped: 0,
         errors: []
     };
     
-    // Fetch current warnings
-    const warnings = await getIrelandWarnings();
-    results.totalWarnings = warnings.length;
+    // Fetch and deduplicate
+    const rawWarnings = await getIrelandWarnings();
+    const warnings = deduplicateWarnings(rawWarnings);
+    results.warningCount = warnings.length;
     
     if (warnings.length === 0) {
         context.log('No active warnings');
         return results;
     }
     
-    // Check which warnings are new
-    const newWarnings = force ? warnings : warnings.filter(w => !hasBeenSent(w));
-    results.newWarnings = newWarnings.length;
+    const message = buildWarningMessage(warnings);
+    const highest = getHighestSeverity(warnings);
     
-    if (newWarnings.length === 0 && !force) {
-        context.log('No new warnings to send');
-        return results;
-    }
+    const warningData = {
+        type: highest.type,
+        severity: highest.severityName,
+        onset: highest.onset,
+    };
     
-    // Build message for new warnings
-    const message = buildWarningMessage(force ? warnings : newWarnings);
+    const connectionString = process.env.AzureWebJobsStorage;
     
-    // Mark warnings as sent
-    newWarnings.forEach(w => markAsSent(w));
-    
-    // Development mode check
     if (!connectionString || connectionString === 'UseDevelopmentStorage=true') {
-        context.log('Development mode - skipping user notifications');
-        results.skipped = 'Development mode';
+        context.log('Development mode - skipping');
         return results;
     }
     
     try {
         const prefsClient = TableClient.fromConnectionString(connectionString, 'UserPreferences');
         
-        // Query users with weather warnings enabled
         const users = prefsClient.listEntities({
             queryOptions: { filter: "telegramEnabled eq true" }
         });
         
         for await (const user of users) {
-            // Check if weather warnings enabled
-            const warningsEnabled = user.alertWeatherWarnings === true ||
-                user.alertTypes?.weatherWarnings === true ||
-                (user.preferencesJson && JSON.parse(user.preferencesJson)?.alertTypes?.weatherWarnings === true);
-            
-            if (!warningsEnabled && !force) {
-                continue;
+            // Check if enabled
+            let warningsEnabled = false;
+            if (user.preferencesJson) {
+                try {
+                    const prefs = JSON.parse(user.preferencesJson);
+                    warningsEnabled = prefs.alertTypes?.weatherWarnings === true;
+                } catch (e) {}
             }
+            warningsEnabled = warningsEnabled || user.alertWeatherWarnings === true;
+            
+            if (!warningsEnabled && !force) continue;
             
             results.processed++;
             
-            // Parse preferences
-            let prefs = {};
-            if (user.preferencesJson) {
+            const userId = user.rowKey;
+            let chatId = user.telegramChatId;
+            if (!chatId && user.preferencesJson) {
                 try {
-                    prefs = JSON.parse(user.preferencesJson);
+                    chatId = JSON.parse(user.preferencesJson).telegramChatId;
                 } catch (e) {}
             }
-            
-            const chatId = user.telegramChatId || prefs.telegramChatId;
             
             if (!chatId) {
                 results.skipped++;
@@ -397,14 +411,35 @@ async function checkAndSendWarnings(context, force = false) {
             }
             
             try {
+                // Check deduplication
+                const alreadySent = await hasRecentAlert(
+                    userId, 
+                    'weather-warning', 
+                    warningData, 
+                    WARNING_COOLDOWN_HOURS
+                );
+                
+                if (alreadySent && !force) {
+                    results.alreadySent++;
+                    continue;
+                }
+                
                 const sent = await sendTelegramMessage(chatId, message);
+                
                 if (sent) {
                     results.sent++;
+                    await recordAlert(userId, 'weather-warning', {
+                        ...warningData,
+                        title: `${highest.severityName} ${highest.type} Warning`,
+                        summary: highest.description || `${highest.type} warning`,
+                        location: highest.regionsText || 'Ireland',
+                    });
                 } else {
-                    results.errors.push({ userId: user.rowKey, error: 'Send failed' });
+                    results.errors.push({ userId, error: 'Send failed' });
                 }
+                
             } catch (err) {
-                results.errors.push({ userId: user.rowKey, error: err.message });
+                results.errors.push({ userId, error: err.message });
             }
         }
         
@@ -416,67 +451,9 @@ async function checkAndSendWarnings(context, force = false) {
     return results;
 }
 
-/**
- * Check if warning has already been sent (simple in-memory tracking)
- * In production, use database for persistence across function restarts
- */
-function hasBeenSent(warning) {
-    const key = `${warning.id}-${warning.type}-${warning.severityLevel}`;
-    const sent = sentWarnings.get(key);
-    
-    if (!sent) return false;
-    
-    // Re-send if it was sent more than 12 hours ago (warning might be updated)
-    const twelveHoursAgo = Date.now() - (12 * 60 * 60 * 1000);
-    return sent > twelveHoursAgo;
-}
-
-/**
- * Mark warning as sent
- */
-function markAsSent(warning) {
-    const key = `${warning.id}-${warning.type}-${warning.severityLevel}`;
-    sentWarnings.set(key, Date.now());
-    
-    // Clean up old entries (older than 24 hours)
-    const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
-    for (const [k, v] of sentWarnings) {
-        if (v < oneDayAgo) {
-            sentWarnings.delete(k);
-        }
-    }
-}
-
 // ============================================
-// Helpers
+// Telegram
 // ============================================
-function formatDateTime(date) {
-    if (!date) return '';
-    
-    const now = new Date();
-    const isToday = date.toDateString() === now.toDateString();
-    const tomorrow = new Date(now);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const isTomorrow = date.toDateString() === tomorrow.toDateString();
-    
-    const timeStr = date.toLocaleTimeString('en-IE', { 
-        hour: '2-digit', 
-        minute: '2-digit',
-        hour12: false 
-    });
-    
-    if (isToday) return `Today ${timeStr}`;
-    if (isTomorrow) return `Tomorrow ${timeStr}`;
-    
-    const dayStr = date.toLocaleDateString('en-IE', { 
-        weekday: 'short',
-        day: 'numeric',
-        month: 'short'
-    });
-    
-    return `${dayStr} ${timeStr}`;
-}
-
 async function sendTelegramMessage(chatId, message) {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     if (!token) return false;
@@ -501,6 +478,6 @@ async function sendTelegramMessage(chatId, message) {
 
 module.exports = {
     buildWarningMessage,
-    checkAndSendWarnings,
-    getWarningAdvice
+    deduplicateWarnings,
+    checkAndSendWarnings
 };

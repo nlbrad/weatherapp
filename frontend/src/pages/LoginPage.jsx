@@ -200,18 +200,7 @@ const LoginPage = () => {
             )}
           </div>
 
-          {/* Sign Up Link */}
-          {isAuthConfigured && (
-            <p className="text-center text-slate-500 text-sm mt-6">
-              Don't have an account?{' '}
-              <button 
-                onClick={() => handleLogin('redirect')}
-                className="text-cyan-400 hover:text-cyan-300 transition-colors"
-              >
-                Sign up
-              </button>
-            </p>
-          )}
+          {/* Removed sign up option - accounts created manually */}
         </div>
 
         {/* Footer */}

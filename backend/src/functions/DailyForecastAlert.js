@@ -1,25 +1,33 @@
 /**
- * DailyForecastAlert.js - Morning weather briefing
+ * DailyForecastAlert.js - Morning Weather Briefing
  * 
- * Sends a daily forecast message to users each morning.
- * Uses existing SkyScore for tonight's stargazing preview.
+ * FIXES:
+ * - Uses AlertTracker for deduplication (no more sending twice!)
+ * - Deduplicates warnings (no more duplicate wind warnings!)
+ * - Records alerts for history
  * 
  * Triggers:
  * - HTTP: POST /api/daily-forecast (manual test)
- * - Timer: 7am UTC daily (configurable per user)
+ * - Timer: 7am UTC daily
  */
 
 const { app } = require('@azure/functions');
 const { TableClient } = require('@azure/data-tables');
 
-// Use existing SkyScore module (DRY!)
+// Use existing SkyScore module
 const { calculateSkyScore } = require('../scoring/SkyScore');
 
-// Weather warnings from MeteoAlarm
+// Weather warnings
 const { getWarningsForLocation, formatWarningsForMessage, getHighestSeverity } = require('../utils/MeteoAlarm');
 
 // User location helper
 const { getUserLocation } = require('../utils/UserLocationHelper');
+
+// Persistent alert tracking - NEW!
+const { hasRecentAlert, recordAlert } = require('../utils/AlertTracker');
+
+// Only send once per day
+const DAILY_COOLDOWN_HOURS = 20;
 
 // ============================================
 // HTTP Trigger - Manual testing
@@ -65,7 +73,7 @@ app.http('DailyForecastAlert', {
                 };
             }
             
-            // Otherwise return preview
+            // Return preview
             return {
                 status: 200,
                 jsonBody: {
@@ -88,13 +96,13 @@ app.http('DailyForecastAlert', {
 // Timer Trigger - Daily at 7am UTC
 // ============================================
 app.timer('DailyForecastTimer', {
-    schedule: '0 0 7 * * *',  // 7am UTC daily
+    schedule: '0 0 7 * * *',
     handler: async (timer, context) => {
         context.log('DailyForecastTimer triggered at', new Date().toISOString());
         
         try {
             const results = await processAllUsersForDailyForecast(context);
-            context.log(`Daily forecast: ${results.processed} users, ${results.sent} sent`);
+            context.log(`Daily forecast: ${results.sent} sent, ${results.alreadySent} already sent today`);
         } catch (error) {
             context.error('Error in DailyForecastTimer:', error);
         }
@@ -102,7 +110,7 @@ app.timer('DailyForecastTimer', {
 });
 
 // ============================================
-// HTTP Trigger - Test batch processor
+// HTTP Trigger - Batch test
 // ============================================
 app.http('DailyForecastBatchTest', {
     methods: ['POST', 'GET'],
@@ -119,7 +127,6 @@ app.http('DailyForecastBatchTest', {
                 status: 200,
                 jsonBody: {
                     success: true,
-                    message: 'Batch process completed',
                     forced: force,
                     ...results
                 }
@@ -139,7 +146,7 @@ app.http('DailyForecastBatchTest', {
 // ============================================
 async function generateDailyForecast(lat, lon, locationName, context) {
     // Fetch weather data and warnings in parallel
-    const [weatherData, warnings] = await Promise.all([
+    const [weatherData, rawWarnings] = await Promise.all([
         fetchWeatherData(lat, lon, context),
         getWarningsForLocation(lat, lon).catch(err => {
             context.log('Warning fetch error:', err.message);
@@ -151,6 +158,9 @@ async function generateDailyForecast(lat, lon, locationName, context) {
         throw new Error('Failed to fetch weather data');
     }
     
+    // Deduplicate warnings!
+    const warnings = deduplicateWarnings(rawWarnings);
+    
     const current = weatherData.current;
     const today = weatherData.daily?.[0] || {};
     const hourly = weatherData.hourly || [];
@@ -160,411 +170,205 @@ async function generateDailyForecast(lat, lon, locationName, context) {
     const tempMin = Math.round(today.temp?.min ?? current.temp);
     const tempMax = Math.round(today.temp?.max ?? current.temp);
     const feelsLike = Math.round(current.feels_like);
-    const feelsLikeMin = Math.round(today.feels_like?.morn ?? feelsLike);
-    const feelsLikeMax = Math.round(today.feels_like?.day ?? feelsLike);
-    const humidity = current.humidity;
-    const windSpeed = Math.round(current.wind_speed * 3.6); // m/s to km/h
+    
+    // Weather description
+    const weatherDesc = current.weather?.[0]?.description || 'Unknown';
+    const weatherMain = current.weather?.[0]?.main || 'Clear';
+    
+    // Rain probability
+    const rainChance = Math.round((today.pop || 0) * 100);
+    
+    // Wind
+    const windSpeed = Math.round((current.wind_speed || 0) * 3.6);
     const windGust = current.wind_gust ? Math.round(current.wind_gust * 3.6) : null;
     const windDir = getWindDirection(current.wind_deg);
-    const clouds = current.clouds;
-    const visibility = current.visibility; // in meters
-    const description = current.weather?.[0]?.description || 'Unknown';
-    const rainChance = Math.round((today.pop || 0) * 100);
-    const uvIndex = Math.round(current.uvi || today.uvi || 0);
     
-    // Find rain periods
-    const rainPeriods = findRainPeriods(hourly);
+    // Visibility & humidity
+    const visibility = current.visibility ? (current.visibility / 1000).toFixed(1) : null;
+    const humidity = current.humidity;
     
-    // Calculate tonight's SkyScore
-    const skyScore = calculateTonightSkyScore(weatherData);
+    // Sun times
+    const sunrise = formatTime(current.sunrise);
+    const sunset = formatTime(current.sunset);
+    const dayLength = getDayLength(current.sunrise, current.sunset);
     
-    // Calculate outdoor score (simplified)
-    const outdoorScore = calculateOutdoorScore(weatherData);
-    
-    // Generate tip
-    const tip = generateTip(weatherData, rainPeriods, skyScore, warnings);
+    // Calculate SkyScore for tonight
+    let skyScore = { score: 0, rating: 'Unknown' };
+    try {
+        skyScore = await calculateSkyScore(lat, lon);
+    } catch (err) {
+        context.log('SkyScore error:', err.message);
+    }
     
     // Build message
-    const message = buildForecastMessage({
+    const message = buildDailyMessage({
         locationName,
-        tempNow,
-        tempMin,
-        tempMax,
-        feelsLike,
-        feelsLikeMin,
-        feelsLikeMax,
-        description,
+        warnings,
+        tempNow, tempMin, tempMax, feelsLike,
+        weatherDesc, weatherMain,
         rainChance,
-        rainPeriods,
-        windSpeed,
-        windGust,
-        windDir,
-        humidity,
-        clouds,
-        visibility,
-        uvIndex,
+        windSpeed, windGust, windDir,
+        visibility, humidity,
+        sunrise, sunset, dayLength,
         skyScore,
-        outdoorScore,
-        tip,
-        sunrise: today.sunrise,
-        sunset: today.sunset,
-        warnings
+        hourly
     });
     
     return {
         message,
         summary: {
-            tempMin,
-            tempMax,
-            feelsLike,
+            location: locationName,
+            temp: { now: tempNow, min: tempMin, max: tempMax },
+            conditions: weatherMain,
             rainChance,
-            windSpeed,
-            windGust,
-            visibility,
-            outdoorScore: outdoorScore.score,
-            skyScore: skyScore.score,
-            description,
-            warningCount: warnings.length,
-            highestWarning: getHighestSeverity(warnings)
+            warnings: warnings.length,
+            skyScore: skyScore.score
         }
     };
 }
 
 /**
- * Build the forecast message
+ * Deduplicate warnings - same type/severity = combine
  */
-function buildForecastMessage(data) {
+function deduplicateWarnings(warnings) {
+    if (!warnings || warnings.length === 0) return [];
+    
+    const seen = new Map();
+    
+    for (const warning of warnings) {
+        const key = `${warning.type}-${warning.severityLevel}`;
+        
+        if (!seen.has(key)) {
+            seen.set(key, warning);
+        } else {
+            const existing = seen.get(key);
+            // Keep later expiry, merge regions
+            const existingExpires = new Date(existing.expires || 0);
+            const newExpires = new Date(warning.expires || 0);
+            
+            if (newExpires > existingExpires) {
+                if (warning.regionsText !== existing.regionsText) {
+                    warning.regionsText = mergeRegions(existing.regionsText, warning.regionsText);
+                }
+                seen.set(key, warning);
+            }
+        }
+    }
+    
+    return Array.from(seen.values());
+}
+
+function mergeRegions(r1, r2) {
+    if (!r1) return r2;
+    if (!r2) return r1;
+    const all = new Set([...r1.split(', '), ...r2.split(', ')]);
+    return Array.from(all).join(', ');
+}
+
+/**
+ * Build the daily forecast message
+ */
+function buildDailyMessage(data) {
+    const lines = [];
     const {
-        locationName, tempNow, tempMin, tempMax, feelsLike, feelsLikeMin, feelsLikeMax,
-        description, rainChance, rainPeriods, windSpeed, windGust, windDir,
-        humidity, clouds, visibility, uvIndex, skyScore, outdoorScore, tip, 
-        sunrise, sunset, warnings
+        locationName, warnings,
+        tempNow, tempMin, tempMax, feelsLike,
+        weatherDesc, weatherMain,
+        rainChance,
+        windSpeed, windGust, windDir,
+        visibility, humidity,
+        sunrise, sunset, dayLength,
+        skyScore
     } = data;
     
-    const lines = [];
-    
-    // Greeting based on time
-    const hour = new Date().getHours();
-    const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-    
     // Header
-    lines.push(`☀️ *${greeting}! Here's today in ${locationName}*`);
+    const greeting = getGreeting();
+    const weatherEmoji = getWeatherEmoji(weatherMain);
+    lines.push(`${weatherEmoji} ${greeting} Here's today in ${locationName}`);
     lines.push('');
     
-    // Weather warnings at the top if any
+    // Warnings first (if any)
     if (warnings && warnings.length > 0) {
-        const warningsText = formatWarningsForMessage(warnings);
-        if (warningsText) {
-            lines.push(warningsText);
+        lines.push('⚠️ *Active Weather Warnings:*');
+        lines.push('');
+        for (const w of warnings) {
+            lines.push(`${w.severityColor} *${w.severityName} - ${w.type}*`);
+            if (w.regionsText && !w.isNationwide) {
+                lines.push(`   📍 ${w.regionsText}`);
+            }
+            if (w.onset && w.expires) {
+                lines.push(`   ⏰ ${formatDateTime(w.onset)} - ${formatDateTime(w.expires)}`);
+            }
             lines.push('');
         }
     }
     
-    // Temperature section
+    // Temperature
     lines.push('🌡️ *Temperature*');
     lines.push(`   ${tempMin}°C → ${tempMax}°C (now ${tempNow}°C)`);
-    
-    // Feels like - show range if significantly different
-    const feelsLikeDiff = Math.abs(feelsLike - tempNow);
-    if (feelsLikeDiff >= 3) {
-        lines.push(`   Feels like ${feelsLike}°C`);
-    }
+    lines.push(`   Feels like ${feelsLike}°C`);
     lines.push('');
     
-    // Weather description
-    const weatherEmoji = getWeatherEmoji(description, clouds, rainChance);
-    lines.push(`${weatherEmoji} *${capitalise(description)}*`);
-    
-    // Rain info
-    if (rainChance > 20) {
+    // Conditions
+    lines.push(`${weatherEmoji} ${capitalise(weatherDesc)}`);
+    if (rainChance > 0) {
         lines.push(`🌧️ ${rainChance}% chance of rain`);
-        if (rainPeriods.length > 0) {
-            lines.push(`   ${rainPeriods.join(', ')}`);
-        }
     }
     lines.push('');
     
-    // Wind section
+    // Wind
     lines.push('💨 *Wind*');
-    if (windGust && windGust > windSpeed + 10) {
-        lines.push(`   ${windSpeed} km/h ${windDir} (gusts ${windGust} km/h)`);
-    } else {
-        lines.push(`   ${windSpeed} km/h ${windDir}`);
-    }
-    
-    // Wind warning indicator
-    if (windGust && windGust >= 70) {
-        lines.push('   ⚠️ _Strong gusts - take care outdoors_');
-    } else if (windGust && windGust >= 50) {
-        lines.push('   ⚠️ _Gusty conditions_');
-    }
+    lines.push(`   ${windSpeed} km/h ${windDir}${windGust ? ` (gusts ${windGust} km/h)` : ''}`);
     lines.push('');
     
-    // Visibility
+    // Details
     if (visibility) {
-        const visKm = (visibility / 1000).toFixed(1);
-        let visDesc;
-        if (visibility >= 10000) {
-            visDesc = 'Excellent';
-        } else if (visibility >= 5000) {
-            visDesc = 'Good';
-        } else if (visibility >= 2000) {
-            visDesc = 'Moderate';
-        } else if (visibility >= 1000) {
-            visDesc = 'Poor';
-        } else {
-            visDesc = 'Very poor';
-        }
-        lines.push(`👁️ Visibility: ${visKm} km (${visDesc})`);
+        const visRating = visibility >= 10 ? 'Excellent' : visibility >= 5 ? 'Good' : visibility >= 2 ? 'Moderate' : 'Poor';
+        lines.push(`👁️ Visibility: ${visibility} km (${visRating})`);
     }
-    
-    // Humidity if notable
-    if (humidity >= 85) {
-        lines.push(`💧 Humidity: ${humidity}% (very humid)`);
-    } else if (humidity <= 30) {
-        lines.push(`💧 Humidity: ${humidity}% (dry)`);
-    }
-    
-    // UV Index if significant
-    if (uvIndex >= 6) {
-        lines.push(`☀️ UV Index: ${uvIndex} (High - wear sunscreen)`);
-    } else if (uvIndex >= 3) {
-        lines.push(`☀️ UV Index: ${uvIndex} (Moderate)`);
+    if (humidity) {
+        const humidDesc = humidity > 80 ? 'very humid' : humidity > 60 ? 'humid' : humidity < 30 ? 'dry' : 'comfortable';
+        lines.push(`💧 Humidity: ${humidity}% (${humidDesc})`);
     }
     lines.push('');
     
-    // Sunrise/Sunset
-    if (sunrise && sunset) {
-        const sunriseTime = formatTime(sunrise);
-        const sunsetTime = formatTime(sunset);
-        const dayLength = Math.round((sunset - sunrise) / 3600);
-        const dayMins = Math.round(((sunset - sunrise) % 3600) / 60);
-        lines.push(`🌅 Sunrise ${sunriseTime} · Sunset ${sunsetTime}`);
-        lines.push(`   (${dayLength}h ${dayMins}m daylight)`);
-    }
+    // Sun times
+    lines.push(`🌅 Sunrise ${sunrise} · Sunset ${sunset}`);
+    lines.push(`   (${dayLength} daylight)`);
     lines.push('');
     
-    // Today's scores
+    // Activity scores
+    const outdoorScore = calculateOutdoorScore(data);
     lines.push('📊 *Activity Scores:*');
-    const outdoorEmoji = outdoorScore.score >= 70 ? '✅' : outdoorScore.score >= 50 ? '⚠️' : '❌';
-    const skyEmoji = skyScore.score >= 70 ? '✅' : skyScore.score >= 50 ? '⚠️' : '❌';
-    lines.push(`   ${outdoorEmoji} Outdoor: ${outdoorScore.score}/100 (${outdoorScore.rating})`);
-    lines.push(`   ${skyEmoji} Stargazing tonight: ${skyScore.score}/100 (${skyScore.rating})`);
-    lines.push('');
-    
-    // Tip
-    if (tip) {
-        lines.push(`💡 _${tip}_`);
-    }
+    lines.push(`   ${outdoorScore >= 60 ? '✅' : outdoorScore >= 40 ? '⚠️' : '❌'} Outdoor: ${outdoorScore}/100 (${getRating(outdoorScore)})`);
+    lines.push(`   ${skyScore.score >= 60 ? '✅' : skyScore.score >= 40 ? '⚠️' : '❌'} Stargazing tonight: ${skyScore.score}/100 (${skyScore.rating})`);
     
     return lines.join('\n');
 }
 
-/**
- * Calculate tonight's SkyScore using existing module
- */
-function calculateTonightSkyScore(weatherData) {
-    const current = weatherData.current || {};
-    const daily = weatherData.daily?.[0] || {};
-    
-    // Use evening/night forecast if available, otherwise current
-    const tonightHour = weatherData.hourly?.find(h => {
-        const hour = new Date(h.dt * 1000).getHours();
-        return hour >= 21 || hour <= 2;
-    }) || current;
-    
-    const weather = {
-        clouds: tonightHour.clouds ?? current.clouds ?? 50,
-        humidity: tonightHour.humidity ?? current.humidity ?? 70,
-        visibility: current.visibility ?? 10000,
-        windSpeed: tonightHour.wind_speed ?? current.wind_speed ?? 5
-    };
-    
-    const moonData = {
-        phase: daily.moon_phase ?? 0.5
-    };
-    
-    const result = calculateSkyScore(weather, moonData);
-    
-    return {
-        score: result.score,
-        rating: result.rating
-    };
-}
-
-/**
- * Calculate outdoor activity score (simplified)
- */
-function calculateOutdoorScore(weatherData) {
-    const current = weatherData.current || {};
-    const today = weatherData.daily?.[0] || {};
-    
-    let score = 100;
-    let reasons = [];
-    
-    // Temperature factor (ideal: 15-22°C)
-    const temp = current.temp ?? 15;
-    if (temp < 5) {
-        score -= 30;
-        reasons.push('cold');
-    } else if (temp < 10) {
-        score -= 15;
-    } else if (temp > 28) {
-        score -= 20;
-        reasons.push('hot');
-    } else if (temp > 25) {
-        score -= 10;
-    }
-    
-    // Rain factor
-    const rainChance = (today.pop || 0) * 100;
-    if (rainChance > 70) {
-        score -= 35;
-        reasons.push('likely rain');
-    } else if (rainChance > 40) {
-        score -= 20;
-    } else if (rainChance > 20) {
-        score -= 10;
-    }
-    
-    // Wind factor
-    const windSpeed = (current.wind_speed ?? 0) * 3.6;
-    if (windSpeed > 40) {
-        score -= 30;
-        reasons.push('very windy');
-    } else if (windSpeed > 25) {
-        score -= 15;
-    } else if (windSpeed > 15) {
-        score -= 5;
-    }
-    
-    // Cloud factor (minor impact)
-    const clouds = current.clouds ?? 50;
-    if (clouds > 90) {
-        score -= 5;
-    }
-    
-    score = Math.max(0, Math.min(100, score));
-    
-    let rating;
-    if (score >= 80) rating = 'Excellent';
-    else if (score >= 65) rating = 'Good';
-    else if (score >= 50) rating = 'Fair';
-    else if (score >= 35) rating = 'Poor';
-    else rating = 'Bad';
-    
-    return { score, rating, reasons };
-}
-
-/**
- * Find rain periods from hourly forecast
- */
-function findRainPeriods(hourly) {
-    const periods = [];
-    let rainStart = null;
-    
-    for (const hour of hourly.slice(0, 24)) {
-        const time = new Date(hour.dt * 1000);
-        const hasRain = hour.pop > 0.3 || hour.rain?.['1h'] > 0;
-        
-        if (hasRain && !rainStart) {
-            rainStart = time;
-        } else if (!hasRain && rainStart) {
-            periods.push(`${formatHour(rainStart)}-${formatHour(time)}`);
-            rainStart = null;
-        }
-    }
-    
-    if (rainStart) {
-        periods.push(`from ${formatHour(rainStart)}`);
-    }
-    
-    return periods.slice(0, 2); // Max 2 periods
-}
-
-/**
- * Generate a helpful tip
- */
-function generateTip(weatherData, rainPeriods, skyScore, warnings) {
-    const current = weatherData.current || {};
-    const hourly = weatherData.hourly || [];
-    
-    // Weather warning takes priority
-    if (warnings && warnings.length > 0) {
-        const highest = warnings.reduce((max, w) => 
-            (w.severityLevel || 0) > (max.severityLevel || 0) ? w : max
-        );
-        if (highest.severityLevel >= 3) { // Orange or Red
-            return `${highest.severityName} warning in effect - check warnings above and plan accordingly.`;
-        }
-    }
-    
-    // Check if rain clears later
-    if (rainPeriods.length > 0) {
-        const eveningHours = hourly.filter(h => {
-            const hour = new Date(h.dt * 1000).getHours();
-            return hour >= 17 && hour <= 21;
-        });
-        const eveningClear = eveningHours.every(h => (h.pop || 0) < 0.3);
-        if (eveningClear) {
-            return 'Rain clears by evening - good for after-work activities!';
-        }
-    }
-    
-    // Good stargazing tonight
-    if (skyScore.score >= 70) {
-        return 'Clear skies tonight - great for stargazing!';
-    }
-    
-    // Strong wind warning
-    const windGust = current.wind_gust ? current.wind_gust * 3.6 : 0;
-    if (windGust > 60) {
-        return 'Strong gusts expected - secure loose items and take care on exposed routes.';
-    }
-    
-    // Cold warning
-    if ((current.temp ?? 15) < 5) {
-        return 'Dress warmly - it\'s cold out there!';
-    }
-    
-    // Hot day
-    if ((current.temp ?? 15) > 25) {
-        return 'Stay hydrated and seek shade during midday.';
-    }
-    
-    // Low visibility
-    if ((current.visibility ?? 10000) < 2000) {
-        return 'Reduced visibility - take extra care if driving.';
-    }
-    
-    // Default
-    return null;
-}
-
 // ============================================
-// Batch processor
+// Batch Processor
 // ============================================
 async function processAllUsersForDailyForecast(context, force = false) {
-    const connectionString = process.env.AzureWebJobsStorage;
-    
     const results = {
         processed: 0,
         sent: 0,
+        alreadySent: 0,
         skipped: 0,
-        errors: [],
-        users: []
+        errors: []
     };
     
+    const connectionString = process.env.AzureWebJobsStorage;
+    
     if (!connectionString || connectionString === 'UseDevelopmentStorage=true') {
-        context.log('Development mode - skipping batch processing');
-        results.skipped = 'Development mode';
+        context.log('Development mode - skipping');
         return results;
     }
     
+    const today = new Date().toISOString().split('T')[0];
+    
     try {
         const prefsClient = TableClient.fromConnectionString(connectionString, 'UserPreferences');
-        
-        context.log('Querying users with telegramEnabled=true');
         
         const users = prefsClient.listEntities({
             queryOptions: { filter: "telegramEnabled eq true" }
@@ -572,58 +376,79 @@ async function processAllUsersForDailyForecast(context, force = false) {
         
         for await (const user of users) {
             // Check if daily forecast enabled
-            const dailyForecastEnabled = user.alertDailyForecast === true ||
-                user.alertTypes?.dailyForecast === true ||
-                (user.preferencesJson && JSON.parse(user.preferencesJson)?.alertTypes?.dailyForecast === true);
-            
-            if (!dailyForecastEnabled && !force) {
-                context.log(`User ${user.rowKey}: daily forecast not enabled - skipping`);
-                continue;
+            let enabled = false;
+            if (user.preferencesJson) {
+                try {
+                    const prefs = JSON.parse(user.preferencesJson);
+                    enabled = prefs.alertTypes?.dailyForecast === true;
+                } catch (e) {}
             }
+            enabled = enabled || user.alertDailyForecast === true;
+            
+            if (!enabled && !force) continue;
             
             results.processed++;
             
             const userId = user.rowKey;
-            
-            // Parse preferences
-            let prefs = {};
-            if (user.preferencesJson) {
+            let chatId = user.telegramChatId;
+            if (!chatId && user.preferencesJson) {
                 try {
-                    prefs = JSON.parse(user.preferencesJson);
+                    chatId = JSON.parse(user.preferencesJson).telegramChatId;
                 } catch (e) {}
             }
             
-            const chatId = user.telegramChatId || prefs.telegramChatId;
-            
-            // Get user's saved location from UserLocations table
-            const userLocation = await getUserLocation(userId, context);
-            const lat = userLocation.latitude;
-            const lon = userLocation.longitude;
-            const locationName = userLocation.locationName;
-            
             if (!chatId) {
                 results.skipped++;
-                results.users.push({ userId, status: 'no_chatId' });
                 continue;
             }
             
+            // Check if already sent today!
+            const alreadySent = await hasRecentAlert(
+                userId,
+                'daily-forecast',
+                { date: today },
+                DAILY_COOLDOWN_HOURS
+            );
+            
+            if (alreadySent && !force) {
+                results.alreadySent++;
+                context.log(`User ${userId}: Already sent daily forecast today`);
+                continue;
+            }
+            
+            // Get user location
+            const userLocation = await getUserLocation(userId, context);
+            
             try {
-                const forecast = await generateDailyForecast(lat, lon, locationName, context);
+                const forecast = await generateDailyForecast(
+                    userLocation.latitude,
+                    userLocation.longitude,
+                    userLocation.locationName,
+                    context
+                );
+                
                 const sent = await sendTelegramMessage(chatId, forecast.message);
                 
                 if (sent) {
                     results.sent++;
-                    results.users.push({ userId, status: 'sent' });
+                    
+                    // Record for deduplication + history
+                    await recordAlert(userId, 'daily-forecast', {
+                        date: today,
+                        title: 'Daily Forecast',
+                        summary: `${forecast.summary.temp.min}°C - ${forecast.summary.temp.max}°C, ${forecast.summary.conditions}`,
+                        location: userLocation.locationName,
+                    });
+                    
+                    context.log(`User ${userId}: Daily forecast sent`);
                 } else {
-                    results.errors.push({ userId, error: 'Telegram send failed' });
+                    results.errors.push({ userId, error: 'Send failed' });
                 }
+                
             } catch (err) {
-                context.error(`Error for user ${userId}:`, err.message);
                 results.errors.push({ userId, error: err.message });
             }
         }
-        
-        context.log(`Batch complete: ${results.processed} processed, ${results.sent} sent`);
         
     } catch (error) {
         context.error('Error querying users:', error);
@@ -634,28 +459,119 @@ async function processAllUsersForDailyForecast(context, force = false) {
 }
 
 // ============================================
-// Helpers
+// Helper Functions
 // ============================================
+
 async function fetchWeatherData(lat, lon, context) {
     const apiKey = process.env.OPENWEATHER_API_KEY;
-    if (!apiKey) {
-        context.error('OPENWEATHER_API_KEY not configured');
-        return null;
-    }
+    if (!apiKey) throw new Error('OPENWEATHER_API_KEY not configured');
     
     const url = `https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&units=metric&appid=${apiKey}`;
     
-    try {
-        const response = await fetch(url);
-        if (!response.ok) {
-            context.error(`Weather API error: ${response.status}`);
-            return null;
-        }
-        return await response.json();
-    } catch (error) {
-        context.error('Weather fetch error:', error.message);
-        return null;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Weather API error: ${response.status}`);
+    return response.json();
+}
+
+function getGreeting() {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning!';
+    if (hour < 17) return 'Good afternoon!';
+    return 'Good evening!';
+}
+
+function getWeatherEmoji(main) {
+    const emojis = {
+        'Clear': '☀️',
+        'Clouds': '☁️',
+        'Rain': '🌧️',
+        'Drizzle': '🌦️',
+        'Thunderstorm': '⛈️',
+        'Snow': '❄️',
+        'Mist': '🌫️',
+        'Fog': '🌫️',
+    };
+    return emojis[main] || '🌤️';
+}
+
+function getWindDirection(deg) {
+    if (deg == null) return '';
+    const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    return dirs[Math.round(deg / 45) % 8];
+}
+
+function formatTime(timestamp) {
+    if (!timestamp) return '--:--';
+    return new Date(timestamp * 1000).toLocaleTimeString('en-IE', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+    });
+}
+
+function formatDateTime(dateString) {
+    const date = new Date(dateString);
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+    
+    const time = date.toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit', hour12: false });
+    
+    if (isToday) return `Today ${time}`;
+    
+    return date.toLocaleDateString('en-IE', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+    });
+}
+
+function getDayLength(sunrise, sunset) {
+    if (!sunrise || !sunset) return '-- hours';
+    const diff = sunset - sunrise;
+    const hours = Math.floor(diff / 3600);
+    const mins = Math.floor((diff % 3600) / 60);
+    return `${hours}h ${mins}m`;
+}
+
+function capitalise(str) {
+    if (!str) return '';
+    return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+function calculateOutdoorScore(data) {
+    let score = 100;
+    
+    // Rain penalty
+    if (data.rainChance > 70) score -= 40;
+    else if (data.rainChance > 40) score -= 20;
+    
+    // Wind penalty
+    if (data.windSpeed > 50) score -= 30;
+    else if (data.windSpeed > 30) score -= 15;
+    
+    // Temperature penalty
+    if (data.tempMax < 5 || data.tempMax > 30) score -= 20;
+    
+    // Warnings penalty
+    if (data.warnings?.length > 0) {
+        const highest = getHighestSeverity(data.warnings);
+        if (highest.level >= 4) score -= 40;
+        else if (highest.level >= 3) score -= 25;
+        else score -= 10;
     }
+    
+    return Math.max(0, Math.min(100, score));
+}
+
+function getRating(score) {
+    if (score >= 80) return 'Excellent';
+    if (score >= 60) return 'Good';
+    if (score >= 40) return 'Fair';
+    if (score >= 20) return 'Poor';
+    return 'Bad';
 }
 
 async function sendTelegramMessage(chatId, message) {
@@ -680,42 +596,7 @@ async function sendTelegramMessage(chatId, message) {
     }
 }
 
-function getWindDirection(degrees) {
-    if (degrees == null) return '';
-    const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-    return dirs[Math.round(degrees / 45) % 8];
-}
-
-function getWeatherEmoji(description, clouds, rainChance) {
-    const desc = description.toLowerCase();
-    if (desc.includes('thunder')) return '⛈️';
-    if (desc.includes('rain') || desc.includes('drizzle')) return '🌧️';
-    if (desc.includes('snow')) return '🌨️';
-    if (desc.includes('mist') || desc.includes('fog')) return '🌫️';
-    if (rainChance > 50) return '🌦️';
-    if (clouds > 80) return '☁️';
-    if (clouds > 40) return '⛅';
-    return '☀️';
-}
-
-function formatTime(timestamp) {
-    return new Date(timestamp * 1000).toLocaleTimeString('en-IE', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false
-    });
-}
-
-function formatHour(date) {
-    return date.toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit', hour12: false });
-}
-
-function capitalise(str) {
-    return str.charAt(0).toUpperCase() + str.slice(1);
-}
-
 module.exports = {
     generateDailyForecast,
-    buildForecastMessage,
-    calculateOutdoorScore
+    processAllUsersForDailyForecast
 };
