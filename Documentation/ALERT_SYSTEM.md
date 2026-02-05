@@ -1,10 +1,10 @@
 # Alert System Documentation
 
-Complete reference for the Weather Alert notification system.
+Complete reference for the OmniAlert notification system.
 
 ## Overview
 
-The Weather Alert System sends automated notifications to users via Telegram based on weather conditions, astronomical events, and severe weather warnings.
+OmniAlert sends automated notifications to users via Telegram based on weather conditions, astronomical events, severe weather warnings, and curated news digests.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -35,6 +35,7 @@ The Weather Alert System sends automated notifications to users via Telegram bas
 | **Tonight's Sky** | Stargazing conditions | 6pm UTC daily | `alertTypes.stargazingAlerts` |
 | **Weather Warning** | Met Éireann warnings | Every 30 mins | `alertTypes.weatherWarnings` |
 | **Aurora Alert** | Northern lights | Every hour | `alertTypes.auroraAlerts` |
+| **News Digest** | News & crypto digest | User-set times | `alertTypes.newsDigest` |
 
 ---
 
@@ -492,6 +493,70 @@ GET /api/aurora-alert/batch-test?force=true
 
 ---
 
+## 5. News Digest Alert
+
+### Purpose
+Sends a curated news and cryptocurrency market digest at user-configured times throughout the day.
+
+### Trigger
+- **Timer:** Runs every hour on `:00` and `:30` — checks against each user's configured delivery times
+- **Manual:** `POST /api/news-digest`
+
+### File Location
+```
+backend/src/functions/NewsDigestAlert.js
+```
+
+### Dependencies
+- `../utils/NewsSources.js` - News feeds and crypto data sources
+
+### Message Contents
+
+```
+📰 News Digest
+
+📈 Markets:
+   BTC: $67,234 (+2.3%)
+   ETH: $3,456 (+1.1%)
+   Gold: $2,341 (-0.2%)
+   S&P 500: 5,234 (+0.5%)
+
+😨 Fear & Greed Index: 72 (Greed)
+
+🗞️ Top Stories:
+   • [Headline 1] — Source
+   • [Headline 2] — Source
+   • [Headline 3] — Source
+
+🔗 Links are clickable in Telegram
+```
+
+### User Configuration
+
+Users can set up to **6 delivery times per day**. Times must be on the hour or half-hour (`:00` or `:30`) since the backend timer checks at those intervals.
+
+```
+Valid:   07:00, 07:30, 12:00, 18:30
+Invalid: 07:15, 12:45 (won't trigger)
+```
+
+### Deduplication
+
+A dedup mechanism prevents the same digest from being sent twice for the same time slot.
+
+### API Endpoints
+
+```bash
+# Send to specific chat
+POST /api/news-digest
+Content-Type: application/json
+{
+  "chatId": "444081216"
+}
+```
+
+---
+
 ## User Location System
 
 ### Overview
@@ -589,9 +654,11 @@ Fields:
     weatherWarnings: boolean,
     temperatureAlerts: boolean,
     stargazingAlerts: boolean,
-    auroraAlerts: boolean
+    auroraAlerts: boolean,
+    newsDigest: boolean
   }
 - stargazingThreshold: number (20-95)
+- newsDigestTimes: string[] (e.g. ["07:00", "12:00", "18:30"])
 - morningForecastTime: string ("HH:MM")
 - quietHoursEnabled: boolean
 - quietHoursStart: string
@@ -605,6 +672,7 @@ Users configure preferences at `/settings`:
 - Set Chat ID
 - Toggle alert types
 - Set stargazing threshold (with SkyScore info tooltip)
+- Configure News Digest delivery times (up to 6)
 - Set alert location
 - Configure quiet hours
 
@@ -665,13 +733,27 @@ GET /api/aurora-alert/batch-test?force=true
 
 ```bash
 # Required
-OPENWEATHER_API_KEY=xxx        # OpenWeather One Call 3.0
-TELEGRAM_BOT_TOKEN=xxx         # Telegram Bot API
-AzureWebJobsStorage=xxx        # Azure Storage connection
+OPENWEATHER_API_KEY=xxx              # OpenWeather One Call 3.0
+TELEGRAM_BOT_TOKEN=xxx               # Telegram Bot API
+AzureWebJobsStorage=xxx              # Functions runtime storage
+AZURE_STORAGE_CONNECTION_STRING=xxx   # Azure Table Storage connection
 
-# Optional
-N2YO_API_KEY=xxx               # ISS pass data (for Tonight's Sky)
-GOOGLE_API_KEY=xxx             # Location search autocomplete
+# Location & Search
+GOOGLE_API_KEY=xxx                   # Google Places autocomplete
+
+# Astronomy
+N2YO_API_KEY=xxx                     # ISS pass data (for Tonight's Sky)
+
+# Database (Azure SQL)
+SQL_SERVER=xxx                       # Azure SQL server
+SQL_DATABASE=xxx                     # Azure SQL database name
+SQL_USER=xxx                         # Azure SQL username
+SQL_PASSWORD=xxx                     # Azure SQL password
+
+# WhatsApp (optional)
+TWILIO_ACCOUNT_SID=xxx               # Twilio account
+TWILIO_AUTH_TOKEN=xxx                # Twilio auth
+TWILIO_WHATSAPP_FROM=xxx             # Sender number
 ```
 
 ---
@@ -681,25 +763,40 @@ GOOGLE_API_KEY=xxx             # Location search autocomplete
 ```
 backend/src/
 ├── functions/
-│   ├── DailyForecastAlert.js    # Morning briefing
-│   ├── TonightsSkyAlert.js      # Stargazing alert
-│   ├── WeatherWarningAlert.js   # Met Éireann warnings
-│   ├── AuroraAlert.js           # Northern lights
-│   ├── TelegramWebhook.js       # Bot commands
-│   └── SendTelegramAlert.js     # Send utility
+│   ├── Alerts/
+│   │   ├── DailyForecastAlert.js      # Morning briefing
+│   │   ├── TonightsSkyAlert.js        # Stargazing alert
+│   │   ├── WeatherWarningAlert.js     # Met Éireann warnings
+│   │   ├── AuroraAlert.js             # Northern lights
+│   │   ├── NewsDigestAlert.js         # News & crypto digest
+│   │   ├── CheckAlertsAndNotify.js    # Legacy temp alerts
+│   │   └── ComputeAuroraScore.js      # Aurora score HTTP endpoint
+│   ├── Bot/
+│   │   ├── TelegramWebhook.js         # Bot command handler
+│   │   └── SendTelegramAlert.js       # Message delivery utility
+│   └── Users/
+│       ├── SaveUserLocation.js        # Create/update location
+│       ├── GetUserLocations.js        # List user locations
+│       ├── DeleteUserLocation.js      # Remove location
+│       └── UpdatePreferences.js       # Save alert preferences
 │
 ├── scoring/
-│   ├── SkyScore.js              # Stargazing score
-│   └── AuroraScore.js           # Aurora score
+│   ├── SkyScore.js                    # Stargazing score
+│   └── AuroraScore.js                 # Aurora score
 │
 ├── astronomy/
-│   ├── VisiblePlanets.js        # Planet visibility
-│   ├── ISSPasses.js             # ISS tracking
-│   └── MeteorShowers.js         # Meteor calendar
+│   ├── VisiblePlanets.js              # Planet visibility
+│   ├── ISSPasses.js                   # ISS tracking
+│   └── MeteorShowers.js              # Meteor calendar
 │
-└── utils/
-    ├── MeteoAlarm.js            # Weather warnings
-    └── UserLocationHelper.js    # Location lookup
+├── utils/
+│   ├── MeteoAlarm.js                  # Weather warning parser
+│   ├── UserLocationHelper.js          # Primary location lookup
+│   ├── IntentDetector.js              # NLP for bot commands
+│   └── NewsSources.js                 # News & crypto data sources
+│
+└── database/
+    └── connection.js                  # Azure SQL connection helper
 ```
 
 ---
@@ -712,6 +809,8 @@ backend/src/
 | Tonight's Sky | `0 0 18 * * *` | 18:00 | 18:00/19:00 |
 | Weather Warning | `0 */30 * * * *` | Every 30 min | Every 30 min |
 | Aurora Alert | `0 0 * * * *` | Every hour | Every hour |
+| News Digest | Configurable | User-set times | Up to 6x/day |
+| Legacy Temp Alerts | `0 0 * * * *` | Every hour | Every hour |
 
 > Note: Ireland is UTC+0 in winter, UTC+1 in summer (IST)
 
@@ -723,24 +822,29 @@ backend/src/
 
 ```bash
 # Test Daily Forecast
-curl -X POST "https://weather-alert-backend-xxx.azurewebsites.net/api/daily-forecast" \
+curl -X POST "https://weather-alert-backend-cxc6ghhhagd7dgb8.westeurope-01.azurewebsites.net/api/daily-forecast" \
   -H "Content-Type: application/json" \
   -d '{"chatId": "YOUR_CHAT_ID", "locationName": "Dublin"}'
 
 # Test Tonight's Sky
-curl -X POST "https://weather-alert-backend-xxx.azurewebsites.net/api/tonights-sky" \
+curl -X POST "https://weather-alert-backend-cxc6ghhhagd7dgb8.westeurope-01.azurewebsites.net/api/tonights-sky" \
   -H "Content-Type: application/json" \
   -d '{"chatId": "YOUR_CHAT_ID", "force": true}'
 
 # Test Weather Warning
-curl -X POST "https://weather-alert-backend-xxx.azurewebsites.net/api/weather-warning" \
+curl -X POST "https://weather-alert-backend-cxc6ghhhagd7dgb8.westeurope-01.azurewebsites.net/api/weather-warning" \
   -H "Content-Type: application/json" \
   -d '{"chatId": "YOUR_CHAT_ID"}'
 
 # Test Aurora Alert
-curl -X POST "https://weather-alert-backend-xxx.azurewebsites.net/api/aurora-alert" \
+curl -X POST "https://weather-alert-backend-cxc6ghhhagd7dgb8.westeurope-01.azurewebsites.net/api/aurora-alert" \
   -H "Content-Type: application/json" \
   -d '{"chatId": "YOUR_CHAT_ID", "force": true}'
+
+# Test News Digest
+curl -X POST "https://weather-alert-backend-cxc6ghhhagd7dgb8.westeurope-01.azurewebsites.net/api/news-digest" \
+  -H "Content-Type: application/json" \
+  -d '{"chatId": "YOUR_CHAT_ID"}'
 ```
 
 ### Check Logs
@@ -783,14 +887,22 @@ az functionapp log show --name weather-alert-backend --resource-group your-rg
 2. Check N2YO free tier limits (300 calls/hr)
 3. Verify API key is correct
 
+### News Digest Not Sending
+
+1. Is `alertTypes.newsDigest` enabled?
+2. Are delivery times set on `:00` or `:30`?
+3. Check deduplication — already sent for this time slot?
+
 ---
 
 ## Future Enhancements
 
 - [ ] Rain start/stop alerts
-- [ ] Temperature threshold alerts
-- [ ] Custom timing per user
+- [ ] Temperature threshold alerts (beyond legacy)
 - [ ] Multiple locations per alert
-- [ ] WhatsApp integration
 - [ ] Push notifications (web/mobile)
 - [ ] Alert history page
+- [ ] Custom RSS feeds for News Digest
+- [ ] Keyword alerts ("Notify me when X is mentioned")
+- [ ] Category toggles for News Digest sections
+- [ ] AI-generated summaries for news articles

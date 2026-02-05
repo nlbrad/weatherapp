@@ -1,17 +1,22 @@
-# Troubleshooting Guide
+# OmniAlert - Troubleshooting Guide
 
-Common issues and solutions for the Weather Alert System.
+Common issues and solutions for the OmniAlert Weather Alert System.
+
+---
 
 ## Table of Contents
 
 1. [Local Development Issues](#local-development-issues)
-2. [Deployment Issues](#deployment-issues)
-3. [API Errors](#api-errors)
-4. [Frontend Issues](#frontend-issues)
-5. [Backend Issues](#backend-issues)
-6. [Database Issues](#database-issues)
-7. [WhatsApp Issues](#whatsapp-issues)
-8. [Performance Issues](#performance-issues)
+2. [Backend / Azure Functions Issues](#backend--azure-functions-issues)
+3. [Frontend Issues](#frontend-issues)
+4. [Authentication Issues](#authentication-issues)
+5. [Telegram Bot Issues](#telegram-bot-issues)
+6. [WhatsApp / Twilio Issues](#whatsapp--twilio-issues)
+7. [Weather API Issues](#weather-api-issues)
+8. [Alert System Issues](#alert-system-issues)
+9. [Database Issues](#database-issues)
+10. [Deployment Issues](#deployment-issues)
+11. [Performance Issues](#performance-issues)
 
 ---
 
@@ -19,26 +24,27 @@ Common issues and solutions for the Weather Alert System.
 
 ### Functions Won't Start
 
-**Symptom:** `Initializing HttpWorker timed out`
+**Symptom:** `Initializing HttpWorker timed out` or functions hang on startup
 
-**Causes & Solutions:**
-
-**1. Custom Handler in host.json**
+**Solution 1: Check host.json**
 ```bash
-# Check host.json
 cat backend/host.json
+```
 
-# Should NOT contain customHandler section
-# If it does, remove it:
+Should look like this (NO `customHandler` section):
+```json
 {
   "version": "2.0",
-  "logging": {...},
-  "extensionBundle": {...}
-  // NO customHandler section!
+  "extensionBundle": {
+    "id": "Microsoft.Azure.Functions.ExtensionBundle",
+    "version": "[4.*, 5.0.0)"
+  }
 }
 ```
 
-**2. Corrupted node_modules**
+If there's a `customHandler` section, remove it.
+
+**Solution 2: Reinstall node_modules**
 ```bash
 cd backend
 rm -rf node_modules package-lock.json
@@ -46,16 +52,16 @@ npm install
 npm start
 ```
 
-**3. Syntax errors in function files**
+**Solution 3: Check for syntax errors**
 ```bash
-# Check all functions
+# Test each function file
 node --check src/functions/GetWeather.js
+node --check src/functions/GetWeatherData.js
 node --check src/functions/SaveUserLocation.js
-node --check src/functions/GetUserLocations.js
-node --check src/functions/CheckAlertsAndNotify.js
+# ... repeat for other files
 ```
 
-**4. Wrong Node.js version**
+**Solution 4: Verify Node.js version**
 ```bash
 node --version  # Should be v20.x.x
 
@@ -69,97 +75,69 @@ nvm use 20
 
 **Symptom:** `connect ECONNREFUSED 127.0.0.1:10002`
 
+**Cause:** Azurite (storage emulator) isn't running.
+
 **Solution:**
 ```bash
-# Make sure Azurite is running
-npx azurite
-
-# In another terminal:
+# Terminal 1: Start Azurite
 cd backend
-npm start
-```
-
-**Permanent Solution:**
-```bash
-# Terminal 1: Azurite (leave running)
 npx azurite
 
-# Terminal 2: Backend (leave running)
+# Terminal 2: Then start functions
 npm start
-
-# Terminal 3: Frontend (leave running)
-cd ../frontend
-npm start
-
-# Terminal 4: Your working terminal
 ```
+
+Azurite must be running BEFORE you start the backend.
 
 ---
 
 ### CORS Errors Locally
 
-**Symptom:** `blocked by CORS policy`
+**Symptom:** `Access to fetch blocked by CORS policy` in browser console
 
-**Solution 1: Use Proxy (Recommended)**
+**Solution 1: Check proxy setting**
+
+In `frontend/package.json`, ensure you have:
 ```json
-// frontend/package.json
 {
-  "proxy": "http://localhost:7071",
-  ...
+  "proxy": "http://localhost:7071"
 }
-
-// frontend/src/services/api.js
-const API_BASE_URL = '/api';
 ```
 
-**After adding proxy:**
+**After adding/changing proxy, you MUST restart the frontend:**
 ```bash
-# MUST restart frontend
-cd frontend
+# Ctrl+C to stop, then:
 npm start
 ```
 
-**Solution 2: Add CORS Headers to Functions**
-Already implemented - check function returns include:
-```javascript
-headers: {
-  'Access-Control-Allow-Origin': '*'
-}
+**Solution 2: Check API URL**
+
+In `frontend/.env.local`:
+```env
+REACT_APP_API_URL=http://localhost:7071/api
 ```
 
 ---
 
 ### Tailwind CSS Not Working
 
-**Symptom:** No styling, plain HTML
+**Symptom:** No styling, plain HTML elements
 
-**Cause:** Wrong Tailwind version (v4 instead of v3)
+**Cause:** Tailwind v4 installed instead of v3 (incompatible config format)
 
 **Solution:**
 ```bash
 cd frontend
 
-# Check version
+# Check current version
 npm list tailwindcss
 
-# If v4.x.x, downgrade:
+# If v4.x.x, downgrade to v3:
 npm uninstall tailwindcss
 npm install -D tailwindcss@3 postcss@8 autoprefixer@10
 
-# Reinitialize
+# Regenerate config
 npx tailwindcss init -p
-
-# Update tailwind.config.js:
-module.exports = {
-  content: ["./src/**/*.{js,jsx,ts,tsx}"],
-  theme: { extend: {} },
-  plugins: []
-}
-
-# Update src/index.css:
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
 
 # Restart
 npm start
@@ -173,166 +151,114 @@ npm start
 
 **Solution:**
 ```bash
-# Find and kill process on port 3000
+# Kill process on port 3000
 lsof -ti:3000 | xargs kill -9
 
-# Or use different port
+# Or use a different port
 PORT=3001 npm start
 ```
 
----
-
-## Deployment Issues
-
-### Function App Not Starting in Azure
-
-**Symptom:** Functions timeout or 503 errors
-
-**Check Environment Variables:**
+For backend port 7071:
 ```bash
-az functionapp config appsettings list \
-  --name weather-alert-backend \
-  --resource-group rg-weather-alert
-```
-
-**Verify Required Settings:**
-- `OPENWEATHER_API_KEY` (not empty)
-- `AZURE_STORAGE_CONNECTION_STRING` (not "UseDevelopmentStorage=true")
-- `TWILIO_ACCOUNT_SID` (starts with "AC")
-- `TWILIO_AUTH_TOKEN` (not empty)
-
-**Fix:**
-```bash
-# Update settings
-az functionapp config appsettings set \
-  --name weather-alert-backend \
-  --resource-group rg-weather-alert \
-  --settings KEY=VALUE
-
-# Restart
-az functionapp restart \
-  --name weather-alert-backend \
-  --resource-group rg-weather-alert
+lsof -ti:7071 | xargs kill -9
 ```
 
 ---
 
-### Deployment Fails
+## Backend / Azure Functions Issues
 
-**Symptom:** `func azure functionapp publish` fails
+### Function Returns 500 Error
 
-**Solution 1: Not logged in**
+**Step 1: Check logs**
+
+Locally:
 ```bash
-az login
-az account show  # Verify correct subscription
+# Logs appear in the terminal running `npm start`
 ```
 
-**Solution 2: Wrong function app name**
-```bash
-# List all function apps
-az functionapp list --output table
-
-# Use exact name from list
-func azure functionapp publish YOUR-EXACT-NAME
-```
-
-**Solution 3: Build errors**
-```bash
-# Test build locally first
-cd backend
-npm install
-npm run build  # If you have a build script
-
-# Then deploy
-func azure functionapp publish weather-alert-backend
-```
-
----
-
-### Static Web App Deployment Issues
-
-**Symptom:** Deployment goes to preview instead of production
-
-**Solution:**
-```bash
-# Specify production environment
-npx @azure/static-web-apps-cli deploy ./build \
-  --deployment-token YOUR_TOKEN \
-  --env production
-```
-
-**Get Fresh Token:**
-1. Azure Portal → Static Web App
-2. Overview → "Manage deployment token"
-3. Copy token
-4. Use in deployment command
-
----
-
-## API Errors
-
-### 400 Bad Request
-
-**Causes:**
-1. Missing required parameters
-2. Invalid parameter format
-3. Malformed JSON
-
-**Debug:**
-```bash
-# Check request format
-curl -X POST URL \
-  -H "Content-Type: application/json" \
-  -d '{"userId":"test","locationName":"Dublin"}'
-
-# Verify JSON is valid
-echo '{"test":"value"}' | jq .
-```
-
----
-
-### 500 Internal Server Error
-
-**Check Function Logs:**
-
-**Via Portal:**
-1. Function App → Log stream
-2. Watch for errors
-3. Note the error message
-
-**Via CLI:**
+In Azure:
 ```bash
 az webapp log tail \
-  --name weather-alert-backend \
-  --resource-group rg-weather-alert
+  --name omnialert-backend \
+  --resource-group rg-omnialert
 ```
 
-**Common Causes:**
-- API key invalid/expired
-- Database connection failed
-- External API down
+Or via Portal: Function App → Monitor → Log stream
+
+**Step 2: Common causes**
+
+| Error in logs | Cause | Fix |
+|---------------|-------|-----|
+| `OPENWEATHER_API_KEY is not defined` | Missing env var | Add to `local.settings.json` or Azure config |
+| `Invalid API key` | Wrong or expired key | Get new key from openweathermap.org |
+| `getaddrinfo ENOTFOUND` | Network issue | Check internet connection |
+| `TableNotFoundError` | Table doesn't exist | Save a location first (auto-creates table) |
 
 ---
 
-### Table Not Found Error
+### Timer Triggers Not Running
 
-**Symptom:** `TableNotFound` in response
+**Symptom:** Scheduled alerts (daily forecast, etc.) never fire
 
-**Solution:** Create the table by adding first location
+**Check 1: Verify timer is registered**
 ```bash
-curl -X POST https://your-function-app.azurewebsites.net/api/saveuserlocation \
-  -H "Content-Type: application/json" \
-  -d '{
-    "userId": "user123",
-    "locationName": "Dublin",
-    "country": "IE",
-    "alertsEnabled": true,
-    "minTemp": 5,
-    "maxTemp": 25
-  }'
+az functionapp function list \
+  --name omnialert-backend \
+  --resource-group rg-omnialert \
+  --output table
 ```
 
-The SaveUserLocation function auto-creates the table.
+Look for functions with `timerTrigger` type.
+
+**Check 2: Verify cron expression**
+
+In your function file, the schedule should look like:
+```javascript
+schedule: '0 0 7 * * *'  // 7am UTC daily
+```
+
+**Check 3: View invocation history**
+
+Azure Portal → Function App → Functions → [Your Function] → Monitor → Invocations
+
+**Check 4: Is the function disabled?**
+
+Azure Portal → Function App → Functions → Check for "Disabled" badge
+
+---
+
+### Function App Not Starting (Azure)
+
+**Symptom:** 503 errors or timeout in production
+
+**Check environment variables:**
+```bash
+az functionapp config appsettings list \
+  --name omnialert-backend \
+  --resource-group rg-omnialert \
+  --output table
+```
+
+**Common issues:**
+
+| Missing Variable | Symptom |
+|------------------|---------|
+| `AZURE_STORAGE_CONNECTION_STRING` | App won't start at all |
+| `OPENWEATHER_API_KEY` | Weather endpoints return 500 |
+| `TELEGRAM_BOT_TOKEN` | Alert functions fail |
+| `GOOGLE_API_KEY` | Location search fails |
+
+**Fix: Add missing settings and restart**
+```bash
+az functionapp config appsettings set \
+  --name omnialert-backend \
+  --resource-group rg-omnialert \
+  --settings KEY="value"
+
+az functionapp restart \
+  --name omnialert-backend \
+  --resource-group rg-omnialert
+```
 
 ---
 
@@ -340,359 +266,547 @@ The SaveUserLocation function auto-creates the table.
 
 ### App Loads but Shows "Failed to load locations"
 
-**Causes:**
-1. Backend not running
-2. Wrong API URL
-3. CORS not configured
-4. Network issue
-
-**Debug Steps:**
-
-**1. Check backend is running:**
+**Check 1: Is the backend running?**
 ```bash
-curl https://your-backend-url.azurewebsites.net/api/getweather?city=Dublin&country=IE
+# Local
+curl http://localhost:7071/api/GetUserLocations?userId=dev-user-123
+
+# Production
+curl https://your-backend.azurewebsites.net/api/GetUserLocations?userId=test
 ```
 
-**2. Check browser console (F12):**
-- Look for CORS errors
-- Look for network errors
-- Check API URLs being called
+**Check 2: Browser console (F12)**
 
-**3. Verify API URL in code:**
-```javascript
-// frontend/src/services/api.js
-const API_BASE_URL = 'https://weather-alert-backend-xxx.azurewebsites.net/api';
-```
+Look for:
+- CORS errors → See [CORS section](#cors-errors-locally)
+- 401 Unauthorized → Auth token issue
+- 500 errors → Backend problem
 
-**4. Check CORS in Azure:**
-```bash
-az functionapp cors show \
-  --name weather-alert-backend \
-  --resource-group rg-weather-alert
-```
+**Check 3: Network tab**
 
-Should include your frontend URL.
+F12 → Network tab → Look at failed requests → Check response body for error details
+
+---
+
+### Dashboard Shows No Data
+
+**Symptom:** Dashboard loads but widgets are empty or show loading forever
+
+**Causes & Solutions:**
+
+1. **Location has no coordinates**
+   - Delete the location and re-add it
+   - Make sure to select from the autocomplete dropdown (not just type and submit)
+
+2. **OpenWeather API issue**
+   ```bash
+   # Test directly
+   curl "https://api.openweathermap.org/data/3.0/onecall?lat=53.35&lon=-6.26&appid=YOUR_KEY&units=metric"
+   ```
+
+3. **Cache issue**
+   - Hard refresh: Cmd+Shift+R (Mac) or Ctrl+Shift+R (Windows)
+   - Or clear site data: F12 → Application → Storage → Clear site data
 
 ---
 
 ### Locations Don't Persist
 
-**Symptom:** Locations disappear on refresh
+**Symptom:** Added locations disappear on page refresh
 
-**Cause:** Not saving to database, using only local state
+**Check 1: API actually saving?**
 
-**Debug:**
+Watch the Network tab when you save a location. The POST to `/SaveUserLocation` should return 200.
+
+**Check 2: Correct user ID?**
+
+In dev mode, the app uses `dev-user-123`. Check that locations are being saved with this ID:
 ```bash
-# Check if data is in database
-curl "https://your-backend.azurewebsites.net/api/getuserlocations?userId=user123"
+curl "http://localhost:7071/api/GetUserLocations?userId=dev-user-123"
 ```
 
-**If empty:** SaveUserLocation isn't working
-**If has data:** Frontend not calling API on load
+**Check 3: Azurite running?**
 
-**Check:** `useEffect` in App.js calls `loadLocations()`
+Locally, data is stored in Azurite. If Azurite isn't running when you save, data is lost.
 
 ---
 
-### Add Location Button Doesn't Work
+## Authentication Issues
 
-**Debug:**
-1. Check browser console for errors
-2. Verify form fields have values
-3. Check API is being called (Network tab)
-4. Verify response is successful
+### Login Redirects but Nothing Happens
 
-**Common Issue:** Missing country code
-- Make country code optional in validation
-- Or provide default value
+**Symptom:** Click "Sign in" → redirects to Microsoft → comes back but still not logged in
 
----
+**Check 1: Redirect URI mismatch**
 
-## Backend Issues
+In Azure Portal → Entra → App Registration → Authentication:
+- Redirect URI must EXACTLY match your app URL
+- Include `http://localhost:3000` for local dev
+- Include `https://your-app.azurestaticapps.net` for production
 
-### Timer Trigger Not Running
+**Check 2: Browser console**
 
-**Check if scheduled:**
-```bash
-az functionapp function show \
-  --name weather-alert-backend \
-  --resource-group rg-weather-alert \
-  --function-name CheckAlertsAndNotify
-```
+Look for MSAL errors like:
+- `redirect_uri_mismatch` → Fix redirect URI in Entra
+- `invalid_client` → Wrong client ID in `.env`
+- `AADSTS50011` → Reply URL not registered
 
-**View Trigger History:**
-1. Azure Portal → Function App
-2. Functions → CheckAlertsAndNotify
-3. Monitor → Invocations
+**Check 3: Verify frontend config**
 
-**If not running:**
-- Check cron expression is valid: `0 0 * * * *`
-- Verify function deployed successfully
-- Check function isn't disabled
-
-**Manual Test:**
-```bash
-curl https://your-backend.azurewebsites.net/api/checkalerts
+In `frontend/.env.local` or `.env.production`:
+```env
+REACT_APP_ENTRA_CLIENT_ID=your-actual-client-id
+REACT_APP_ENTRA_TENANT_SUBDOMAIN=your-tenant-subdomain
 ```
 
 ---
 
-### Weather API Returns Error
+### "Dev Mode" Active When It Shouldn't Be
 
-**Symptom:** `Failed to fetch weather data`
+**Symptom:** App shows "Development Mode" banner in production
 
-**Causes:**
-1. Invalid API key
-2. API key not activated (takes 10-15 mins)
-3. City name wrong
-4. Rate limit exceeded
+**Cause:** Entra environment variables not set or incorrect
 
-**Debug:**
-```bash
-# Test API key directly
-curl "https://api.openweathermap.org/data/2.5/weather?q=Dublin&appid=YOUR_KEY&units=metric"
-```
+**Solution:**
+
+1. Verify `.env.production` has all Entra variables
+2. Rebuild: `npm run build`
+3. Redeploy
+
+---
+
+### Token Expired / Session Lost
+
+**Symptom:** App works, then suddenly shows login page
+
+**Cause:** MSAL token expired and silent refresh failed
 
 **Solutions:**
-- Verify key at https://home.openweathermap.org/api_keys
-- Wait 15 mins if just created
-- Check spelling of city name
-- Verify not over 1,000 calls/day limit
+- User can simply log in again
+- Check that `offline_access` scope is included in `authConfig.js`
+- Verify session storage isn't being cleared by browser privacy settings
 
 ---
 
-### Function Timeout
+## Telegram Bot Issues
 
-**Symptom:** Requests take >30 seconds
+### Bot Not Responding to Commands
 
-**Causes:**
-- External API slow/down
-- Too many locations to process
-- Database query inefficient
+**Symptom:** Send `/start` to bot but get no response
 
-**Solutions:**
-1. **Increase timeout** (Consumption plan default: 5 mins)
+**Check 1: Webhook configured?**
 ```bash
-# Not usually needed, but can increase
-az functionapp config set \
-  --name weather-alert-backend \
-  --resource-group rg-weather-alert \
-  --function-timeout 00:10:00
+curl "https://api.telegram.org/bot<YOUR_TOKEN>/getWebhookInfo"
 ```
 
-2. **Optimize queries:**
-- Add indexes
-- Reduce data fetched
-- Cache weather data
+Should show your Azure Function URL. If empty or wrong:
+```bash
+curl "https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook?url=https://your-backend.azurewebsites.net/api/telegram-webhook"
+```
 
-3. **Process in batches:**
-- Don't process all locations at once
-- Use queue for async processing
+**Check 2: Function deployed?**
+```bash
+az functionapp function list \
+  --name omnialert-backend \
+  --resource-group rg-omnialert | grep -i telegram
+```
+
+**Check 3: Bot token correct?**
+
+Verify `TELEGRAM_BOT_TOKEN` in Azure Function App settings matches the token from @BotFather.
+
+---
+
+### Alerts Not Being Delivered
+
+**Symptom:** Timer runs, logs say "sent", but no message in Telegram
+
+**Check 1: Chat ID correct?**
+
+Your Telegram Chat ID should be in `UserPreferences` table. Verify:
+```bash
+# Send /start to bot - it replies with your Chat ID
+# Compare to what's stored in your preferences
+```
+
+**Check 2: Test manual send**
+```bash
+curl -X POST "https://your-backend.azurewebsites.net/api/send-telegram" \
+  -H "Content-Type: application/json" \
+  -d '{"chatId": "YOUR_CHAT_ID", "message": "Test message"}'
+```
+
+**Check 3: Bot blocked?**
+
+If you blocked the bot in Telegram, unblock it and send `/start` again.
+
+---
+
+### "Unauthorized" Error from Telegram API
+
+**Symptom:** Logs show `401 Unauthorized` when sending messages
+
+**Cause:** Invalid bot token
+
+**Solution:**
+1. Go to Telegram → @BotFather → `/mybots` → Select your bot → API Token
+2. Copy the token
+3. Update `TELEGRAM_BOT_TOKEN` in Azure Function App settings
+4. Restart the Function App
+
+---
+
+## WhatsApp / Twilio Issues
+
+### Not Receiving WhatsApp Alerts
+
+**Check 1: Sandbox still connected?**
+
+Twilio sandbox expires after 72 hours of inactivity. Rejoin:
+1. Open WhatsApp
+2. Send the join code to `+1 415 523 8886`
+3. Wait for confirmation
+
+**Check 2: Credentials correct?**
+```bash
+az functionapp config appsettings list \
+  --name omnialert-backend \
+  --resource-group rg-omnialert | grep TWILIO
+```
+
+Verify:
+- `TWILIO_ACCOUNT_SID` starts with `AC`
+- `TWILIO_AUTH_TOKEN` is correct
+- `TWILIO_WHATSAPP_FROM` is `whatsapp:+14155238886` (sandbox number)
+
+**Check 3: Phone number format**
+
+Must be E.164 format with country code: `+353871234567` (no spaces, no dashes)
+
+---
+
+### "Authenticate" Error from Twilio
+
+**Symptom:** Logs show `Error: Authenticate`
+
+**Cause:** Wrong Account SID or Auth Token
+
+**Solution:**
+1. Go to https://console.twilio.com
+2. Copy fresh credentials from the dashboard
+3. Update in Azure Function App settings
+4. Restart Function App
+
+---
+
+## Weather API Issues
+
+### "401 Unauthorized" from OpenWeather
+
+**Causes:**
+1. API key not yet activated (new keys take ~15 minutes)
+2. Key is invalid or deleted
+3. Not subscribed to "One Call API 3.0"
+
+**Test your key:**
+```bash
+curl "https://api.openweathermap.org/data/3.0/onecall?lat=53.35&lon=-6.26&appid=YOUR_KEY&units=metric"
+```
+
+**Solution:**
+1. Go to https://home.openweathermap.org/api_keys
+2. Verify key is active
+3. Check you're subscribed to One Call 3.0 (has a free tier)
+4. If new key, wait 15 minutes
+
+---
+
+### Weather Data Missing or Incomplete
+
+**Symptom:** Some fields are null or missing
+
+**Possible causes:**
+1. OpenWeather doesn't have data for that location
+2. Air quality not available in that region
+3. API response format changed
+
+**Debug:**
+```bash
+# Get raw API response
+curl "http://localhost:7071/api/GetWeatherData?lat=53.35&lon=-6.26" | jq .
+```
+
+Check which fields are null and handle gracefully in the frontend.
+
+---
+
+### Location Search Returns No Results
+
+**Symptom:** Typing in location search shows nothing
+
+**Check 1: Google API key configured?**
+```bash
+# Check if set
+az functionapp config appsettings list \
+  --name omnialert-backend \
+  --resource-group rg-omnialert | grep GOOGLE
+```
+
+**Check 2: Places API enabled?**
+
+Go to Google Cloud Console → APIs & Services → Verify "Places API" is enabled.
+
+**Check 3: API key restrictions**
+
+If you restricted the key, make sure it allows the Places API.
+
+**Test directly:**
+```bash
+curl "http://localhost:7071/api/SearchLocations?query=Dublin"
+```
+
+---
+
+## Alert System Issues
+
+### SkyScore Always Shows 0 or NaN
+
+**Symptom:** Tonight's Sky alert shows "0/100" or "NaN/100"
+
+**Cause:** Missing or invalid weather data being passed to scoring function
+
+**Debug:**
+```bash
+# Test SkyScore endpoint
+curl "http://localhost:7071/api/tonights-sky?lat=53.35&lon=-6.26" | jq .
+```
+
+Check for:
+- Valid cloud cover percentage (0-100)
+- Moon phase data present
+- No null values in weather response
+
+**Fix:** The SkyScore.js file should have null checks. See ALERT_SYSTEM.md for the algorithm.
+
+---
+
+### Weather Warnings Not Showing
+
+**Symptom:** Met Éireann has active warnings but app shows none
+
+**Check 1: MeteoAlarm API working?**
+```bash
+curl "https://feeds.meteoalarm.org/api/v1/warnings/feeds-ireland" | jq .
+```
+
+**Check 2: User has warnings enabled?**
+
+In UserPreferences, `alertTypes.weatherWarnings` should be `true`.
+
+**Check 3: Warning level filter**
+
+We filter out "Green" (no warning). Only Yellow, Orange, Red are shown.
+
+---
+
+### Aurora Alerts Never Fire
+
+**Symptom:** Never get aurora alerts even during geomagnetic storms
+
+**Check 1: Current Kp index**
+```bash
+curl "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json" | jq .
+```
+
+Aurora alerts only fire when Kp ≥ 4 (for Ireland at ~53°N).
+
+**Check 2: User has aurora alerts enabled?**
+
+Check `alertTypes.auroraAlerts` in UserPreferences.
+
+**Check 3: 6-hour cooldown**
+
+To prevent spam, we only send one alert per Kp level every 6 hours. Check logs for "cooldown" messages.
 
 ---
 
 ## Database Issues
 
-### Can't Connect to Storage
+### "TableNotFoundError"
 
-**Symptom:** Connection refused or timeout
+**Symptom:** `TableNotFound` error when fetching locations
 
-**Check Connection String:**
+**Cause:** Table hasn't been created yet
 
-**Local:**
-- Should be `UseDevelopmentStorage=true`
-- Azurite must be running
-
-**Production:**
-- Should start with `DefaultEndpointsProtocol=https;AccountName=...`
-- Verify in Function App Configuration
-
-**Test Connection:**
+**Solution:** Tables are auto-created when you first save data. Save a location:
 ```bash
-# Via Azure CLI
-az storage table list \
-  --connection-string "YOUR_CONNECTION_STRING"
+curl -X POST "http://localhost:7071/api/SaveUserLocation" \
+  -H "Content-Type: application/json" \
+  -d '{"userId": "test", "locationName": "Dublin", "country": "IE", "latitude": 53.35, "longitude": -6.26}'
 ```
 
 ---
 
-### Data Not Persisting
+### Can't Connect to Table Storage
 
-**Symptom:** Data saves but disappears
+**Symptom:** Connection refused or timeout errors
 
-**Causes:**
-1. Using wrong storage account
-2. Connection string pointing to emulator
-3. Table gets deleted
-Verify:
+**Local:**
+- Ensure Azurite is running
+- Check `AZURE_STORAGE_CONNECTION_STRING` is `UseDevelopmentStorage=true`
 
-# List tables in storage account
-az storage table list \
-  --account-name saweatheralerts
+**Production:**
+- Check connection string is the REAL Azure connection string (not development)
+- Verify storage account exists and is accessible
 
-# Check if UserLocations exists
-az storage entity query \
-  --table-name UserLocations \
-  --account-name saweatheralerts
+**Test connection:**
+```bash
+az storage table list --connection-string "YOUR_CONNECTION_STRING"
+```
 
-# WhatsApp Issues
-Not Receiving Alerts
-1. Check Twilio Sandbox Connection:
+---
 
-Open WhatsApp
-Look for messages from +1 415 523 8886
-If no recent messages, rejoin sandbox:
+### Azure SQL Connection Failed
 
-Send "join [your-code]" to the Twilio number
-Wait for confirmation
+**Symptom:** Scoring functions fail with SQL connection errors
 
-2. Verify Credentials:
+**Check 1: Firewall rules**
 
-# Check Function App settings
-az functionapp config appsettings list \
-  --name weather-alert-backend \
-  --resource-group rg-weather-alert \
-  | grep TWILIO
+Azure Portal → SQL Server → Networking → Firewall rules
 
-3. Check Function Logs:
-Look for:
+Ensure "Allow Azure services" is ON.
 
-"Failed to send WhatsApp message: Authenticate" → Wrong credentials
-"No test WhatsApp number configured" → Missing TEST_WHATSAPP_NUMBER
-"Alert sent! SID: ..." → Success!
+**Check 2: Credentials correct?**
 
-4. Verify Temperature Triggers:
-# Check current temp vs thresholds
-curl "https://your-backend.azurewebsites.net/api/getweather?city=Dublin&country=IE"
-curl "https://your-backend.azurewebsites.net/api/getuserlocations?userId=user123"
+Verify `SQL_SERVER`, `SQL_DATABASE`, `SQL_USER`, `SQL_PASSWORD` in Function App settings.
 
-# Current temp should be outside min/max range
+**Check 3: Database paused?**
 
-"Authenticate" Error from Twilio
-Causes:
+Serverless SQL auto-pauses after inactivity. First connection after pause takes ~60 seconds to "wake up."
 
-Wrong Account SID
-Wrong Auth Token
-Credentials from different Twilio project
+---
 
-Solution:
+## Deployment Issues
 
-Go to https://console.twilio.com
-Copy fresh credentials from dashboard
-Update Function App settings
-Restart Function App
+### Deployment Fails
 
+**Symptom:** `func azure functionapp publish` fails
 
-Message Says "Alert sent" but Nothing Received
-Causes:
+**Check 1: Logged in?**
+```bash
+az login
+az account show  # Verify correct subscription
+```
 
-Wrong phone number format
-Number not in sandbox
-Sandbox expired
+**Check 2: Function app exists?**
+```bash
+az functionapp list --output table
+```
 
-Debug:
-# Check Twilio logs
-# Go to console.twilio.com → Monitor → Logs → Messaging
-# Look for your messages and any errors
+**Check 3: Build locally first**
+```bash
+cd backend
+npm install
+npm start  # Make sure it starts without errors
+```
 
-Fix Phone Number:
+Then deploy:
+```bash
+func azure functionapp publish your-app-name
+```
 
-Must include country code: +353873587293
-No spaces or dashes
-Must match number that joined sandbox
+---
 
-Performance Issues
-Slow Page Load
-Causes:
+### Frontend Deploy Succeeds but Site Shows Old Version
 
-Too many API calls
-Large images
-No caching
+**Cause:** Browser cache or CDN cache
 
-// Cache weather data
-const cache = new Map();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+**Solutions:**
+1. Hard refresh: Cmd+Shift+R (Mac) or Ctrl+Shift+R (Windows)
+2. Clear browser cache
+3. Wait 5-10 minutes for CDN cache to expire
+4. Check deployment logs in Azure Portal → Static Web App → Deployment history
 
-async function getWeatherCached(city, country) {
-  const key = `${city}-${country}`;
-  const cached = cache.get(key);
-  
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    return cached.data;
-  }
-  
-  const data = await fetchWeather(city, country);
-  cache.set(key, { data, timestamp: Date.now() });
-  return data;
-}
+---
 
-High Azure Costs
-Monitor Costs:
-bashaz consumption usage list \
+## Performance Issues
+
+### Slow Dashboard Load
+
+**Causes & Solutions:**
+
+1. **Too many API calls** — Dashboard makes parallel requests. Check Network tab to see what's slow.
+
+2. **No caching** — Weather data is cached for 10 minutes. If cache isn't working:
+   - Check `weatherCache.js` is being used
+   - Verify cache TTL settings
+
+3. **Large payload** — If `GetWeatherData` returns too much data, consider splitting into separate endpoints.
+
+---
+
+### High Azure Costs
+
+**Monitor costs:**
+```bash
+az consumption usage list \
   --start-date 2026-01-01 \
-  --end-date 2026-01-31
-Common Causes:
+  --end-date 2026-01-31 \
+  --output table
+```
 
-Too many API calls
-Storage egress charges
-Function executions
+**Common causes:**
+- Timer functions running too frequently
+- SQL database not auto-pausing (check for keep-alive queries)
+- Storage egress charges
 
-Optimize:
+**Optimizations:**
+- Reduce timer frequency if possible
+- Cache weather data to reduce API calls
+- Use the free tier limits (1M function executions/month)
 
-Cache weather data (reduce API calls)
-Use CDN for static assets
-Batch database operations
-Review timer trigger frequency
+---
 
-Getting Help
-Check Logs First
-Backend:
+## Getting Help
 
-# Real-time logs
-az webapp log tail \
-  --name weather-alert-backend \
-  --resource-group rg-weather-alert
+### Debug Checklist
 
-# Historical logs
-az webapp log download \
-  --name weather-alert-backend \
-  --resource-group rg-weather-alert
+When something isn't working:
 
-  Frontend:
+1. [ ] Check browser console for errors (F12 → Console)
+2. [ ] Check Network tab for failed requests (F12 → Network)
+3. [ ] Check backend logs (`npm start` terminal or Azure Log stream)
+4. [ ] Verify environment variables are set
+5. [ ] Test API endpoints directly with curl
+6. [ ] Try locally before debugging production
+7. [ ] Check Azure service health: https://status.azure.com
 
-Browser DevTools → Console tab
-Browser DevTools → Network tab
+### Useful Commands
 
-Debug Checklist
-
- Check browser console for errors
- Check Function App logs
- Verify environment variables
- Test API with curl
- Check Azure service status
- Review recent code changes
- Test locally first
-
-Still Stuck?
-
-Review relevant documentation section
-Check Azure service health
-Search error message online
-Check Azure DevOps for similar issues
-Start fresh Claude conversation with context
-
-# Check all resources
-az resource list --resource-group rg-weather-alert --output table
+```bash
+# Check all Azure resources
+az resource list --resource-group rg-omnialert --output table
 
 # Check function app status
-az functionapp show --name weather-alert-backend --resource-group rg-weather-alert
+az functionapp show --name omnialert-backend --resource-group rg-omnialert
 
-# View app insights (if configured)
-az monitor app-insights component show \
-  --app weather-alert-backend \
-  --resource-group rg-weather-alert
+# View function app logs
+az webapp log tail --name omnialert-backend --resource-group rg-omnialert
 
-# Check storage account status
-az storage account show \
-  --name saweatheralerts \
-  --resource-group rg-weather-alert
+# List function app settings
+az functionapp config appsettings list --name omnialert-backend --resource-group rg-omnialert
+
+# Check storage tables
+az storage table list --connection-string "YOUR_CONNECTION_STRING"
+
+# Test Telegram webhook
+curl "https://api.telegram.org/bot<TOKEN>/getWebhookInfo"
+```
+
+### Still Stuck?
+
+1. Search the error message online
+2. Check [Azure Status](https://status.azure.com) for service issues
+3. Review recent code changes (did something break after a deploy?)
+4. Check the relevant documentation section (ALERT_SYSTEM.md, API_DOCS.md, etc.)
+5. Start fresh — sometimes restarting Azurite, backend, and frontend fixes mysterious issues

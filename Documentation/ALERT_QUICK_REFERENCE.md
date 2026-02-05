@@ -8,6 +8,7 @@
 | 🌙 Tonight's Sky | 6pm UTC | If SkyScore ≥ threshold |
 | ⚠️ Weather Warning | Every 30min | If new Yellow/Orange/Red |
 | 🌌 Aurora | Every hour | If Kp ≥ 4 |
+| 📰 News Digest | User-set times | Up to 6x/day (on :00/:30) |
 
 ---
 
@@ -17,12 +18,12 @@
 # Daily Forecast
 curl -X POST "https://weather-alert-backend-cxc6ghhhagd7dgb8.westeurope-01.azurewebsites.net/api/daily-forecast" \
   -H "Content-Type: application/json" \
-  -d '{"chatId": "444081216"}'
+  -d '{"chatId": "YOUR_CHAT_ID"}'
 
 # Tonight's Sky (force send)
 curl -X POST "https://weather-alert-backend-cxc6ghhhagd7dgb8.westeurope-01.azurewebsites.net/api/tonights-sky" \
   -H "Content-Type: application/json" \
-  -d '{"chatId": "444081216", "force": true}'
+  -d '{"chatId": "YOUR_CHAT_ID", "force": true}'
 
 # Weather Warning
 curl "https://weather-alert-backend-cxc6ghhhagd7dgb8.westeurope-01.azurewebsites.net/api/weather-warning"
@@ -30,7 +31,12 @@ curl "https://weather-alert-backend-cxc6ghhhagd7dgb8.westeurope-01.azurewebsites
 # Aurora
 curl -X POST "https://weather-alert-backend-cxc6ghhhagd7dgb8.westeurope-01.azurewebsites.net/api/aurora-alert" \
   -H "Content-Type: application/json" \
-  -d '{"chatId": "444081216", "force": true}'
+  -d '{"chatId": "YOUR_CHAT_ID", "force": true}'
+
+# News Digest
+curl -X POST "https://weather-alert-backend-cxc6ghhhagd7dgb8.westeurope-01.azurewebsites.net/api/news-digest" \
+  -H "Content-Type: application/json" \
+  -d '{"chatId": "YOUR_CHAT_ID"}'
 ```
 
 ---
@@ -52,21 +58,36 @@ curl ".../api/aurora-alert/batch-test?force=true"
 ```
 backend/src/
 ├── functions/
-│   ├── DailyForecastAlert.js     ← Morning briefing
-│   ├── TonightsSkyAlert.js       ← Stargazing
-│   ├── WeatherWarningAlert.js    ← Met Éireann
-│   ├── AuroraAlert.js            ← Northern lights
-│   └── TelegramWebhook.js        ← Bot commands
+│   ├── Alerts/
+│   │   ├── DailyForecastAlert.js     ← Morning briefing
+│   │   ├── TonightsSkyAlert.js       ← Stargazing
+│   │   ├── WeatherWarningAlert.js    ← Met Éireann
+│   │   ├── AuroraAlert.js            ← Northern lights
+│   │   ├── NewsDigestAlert.js        ← News & crypto digest
+│   │   ├── CheckAlertsAndNotify.js   ← Legacy temp alerts
+│   │   └── ComputeAuroraScore.js     ← Aurora score endpoint
+│   ├── Bot/
+│   │   ├── TelegramWebhook.js        ← Bot commands
+│   │   └── SendTelegramAlert.js      ← Send utility
+│   └── Users/
+│       ├── SaveUserLocation.js       ← Create/update location
+│       ├── GetUserLocations.js       ← List locations
+│       ├── DeleteUserLocation.js     ← Remove location
+│       └── UpdatePreferences.js      ← Save preferences
 ├── scoring/
-│   ├── SkyScore.js               ← Stargazing algorithm
-│   └── AuroraScore.js            ← Aurora algorithm
+│   ├── SkyScore.js                   ← Stargazing algorithm
+│   └── AuroraScore.js                ← Aurora algorithm
 ├── astronomy/
-│   ├── VisiblePlanets.js         ← FREE API
-│   ├── ISSPasses.js              ← N2YO API
-│   └── MeteorShowers.js          ← Static data
-└── utils/
-    ├── MeteoAlarm.js             ← FREE API
-    └── UserLocationHelper.js     ← Location lookup
+│   ├── VisiblePlanets.js             ← FREE API
+│   ├── ISSPasses.js                  ← N2YO API
+│   └── MeteorShowers.js              ← Static data
+├── utils/
+│   ├── MeteoAlarm.js                 ← FREE API
+│   ├── UserLocationHelper.js         ← Location lookup
+│   ├── IntentDetector.js             ← NLP for bot
+│   └── NewsSources.js                ← News & crypto sources
+└── database/
+    └── connection.js                 ← Azure SQL helper
 ```
 
 ---
@@ -74,10 +95,16 @@ backend/src/
 ## Environment Variables
 
 ```
-OPENWEATHER_API_KEY     ← Required
-TELEGRAM_BOT_TOKEN      ← Required
-AzureWebJobsStorage     ← Required
-N2YO_API_KEY           ← For ISS passes
+OPENWEATHER_API_KEY                  ← Required
+TELEGRAM_BOT_TOKEN                   ← Required
+AzureWebJobsStorage                  ← Required
+AZURE_STORAGE_CONNECTION_STRING      ← Required
+GOOGLE_API_KEY                       ← Location search
+N2YO_API_KEY                         ← ISS passes
+SQL_SERVER                           ← Azure SQL
+SQL_DATABASE                         ← Azure SQL
+SQL_USER                             ← Azure SQL
+SQL_PASSWORD                         ← Azure SQL
 ```
 
 ---
@@ -102,9 +129,11 @@ N2YO_API_KEY           ← For ISS passes
     "dailyForecast": true,
     "weatherWarnings": true,
     "stargazingAlerts": true,
-    "auroraAlerts": true
+    "auroraAlerts": true,
+    "newsDigest": true
   },
-  "stargazingThreshold": 65
+  "stargazingThreshold": 65,
+  "newsDigestTimes": ["07:00", "12:00", "18:30"]
 }
 ```
 
@@ -161,3 +190,8 @@ N2YO_API_KEY           ← For ISS passes
 **No weather data?**
 1. Check `OPENWEATHER_API_KEY`
 2. Verify coordinates are valid
+
+**News Digest not sending?**
+1. Is `alertTypes.newsDigest` enabled?
+2. Are delivery times on `:00` or `:30`?
+3. Check dedup — already sent this slot?
