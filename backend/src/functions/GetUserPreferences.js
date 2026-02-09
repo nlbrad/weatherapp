@@ -88,7 +88,20 @@ app.http('GetUserPreferences', {
                 const storedPrefs = entity.preferencesJson 
                     ? JSON.parse(entity.preferencesJson)
                     : {};
-
+            
+                // ========== NEW: Fall back to flat columns ==========
+                // If JSON doesn't have values, use flat columns
+                if (storedPrefs.telegramEnabled === undefined && entity.telegramEnabled !== undefined) {
+                    storedPrefs.telegramEnabled = entity.telegramEnabled;
+                }
+                if (!storedPrefs.telegramChatId && entity.telegramChatId) {
+                    storedPrefs.telegramChatId = entity.telegramChatId;
+                }
+                if (storedPrefs.whatsappEnabled === undefined && entity.whatsappEnabled !== undefined) {
+                    storedPrefs.whatsappEnabled = entity.whatsappEnabled;
+                }
+                // ====================================================
+            
                 // Merge with defaults (in case new fields were added)
                 const preferences = {
                     ...defaultPreferences,

@@ -48,6 +48,17 @@ const ALERT_TYPES = {
     defaultTimes: ['07:30', '18:00'],
     maxTimes: 6,  // Max times per day
   },
+  cryptoDigest: {
+    id: 'cryptoDigest',
+    name: 'Crypto Digest',
+    icon: Newspaper,  // Or use a different icon like DollarSign
+    color: '#F59E0B',  // Bitcoin orange
+    bgColor: 'bg-amber-500/20',
+    description: 'Crypto news, market prices, DeFi metrics & sentiment',
+    hasMultipleTimes: true,  // Multiple delivery times like news digest
+    defaultTimes: ['08:00', '20:00'],  // Default times (morning & evening)
+    maxTimes: 6,  // Max 6 times per day
+  },
   stargazingAlerts: {
     id: 'stargazingAlerts',
     name: "Tonight's Sky",
@@ -101,6 +112,7 @@ const ALERT_TYPES = {
 const ALERT_TYPE_MAP = {
   'daily-forecast': 'dailyForecast',
   'news-digest': 'newsDigest',
+  'crypto-digest': 'cryptoDigest',  // NEW
   'tonights-sky': 'stargazingAlerts',
   'weather-warning': 'weatherWarnings',
   'aurora': 'auroraAlerts',
@@ -164,6 +176,10 @@ const AlertCenterPage = () => {
           break;
         case 'newsDigest':
           endpoint = `${API_BASE_URL}/news-digest`;
+          body = { chatId, force: true };
+          break;
+        case 'cryptoDigest':  // NEW CASE
+          endpoint = `${API_BASE_URL}/crypto-digest`;
           body = { chatId, force: true };
           break;
         case 'stargazingAlerts':
@@ -310,8 +326,10 @@ const AlertCenterPage = () => {
     setEditingAlert(alertType);
     
     if (config.hasMultipleTimes) {
-      // News digest - multiple times per day
-      const savedTimes = preferences?.newsDigestTimes || config.defaultTimes || ['07:30', '18:00'];
+      // Get the correct time key based on alert type
+      const timeKey = alertType === 'newsDigest' ? 'newsDigestTimes' : 'cryptoDigestTimes';
+      const savedTimes = preferences?.[timeKey] || config.defaultTimes || ['07:30', '18:00'];
+      
       setEditValues({
         times: Array.isArray(savedTimes) ? [...savedTimes] : ['07:30', '18:00'],
       });
@@ -333,11 +351,13 @@ const AlertCenterPage = () => {
       let updates;
       
       if (config.hasMultipleTimes) {
-        // News digest - save times array sorted
+        // Handle multiple times (newsDigest OR cryptoDigest)
         const sortedTimes = [...editValues.times].sort();
+        const timeKey = editingAlert === 'newsDigest' ? 'newsDigestTimes' : 'cryptoDigestTimes';
+        
         updates = {
           ...preferences,
-          newsDigestTimes: sortedTimes,
+          [timeKey]: sortedTimes,
         };
       } else {
         updates = {
@@ -568,7 +588,7 @@ const AlertCenterPage = () => {
                     <div className="flex items-center gap-3 mt-1 flex-wrap">
                       {alert.hasMultipleTimes && (
                         <span className="text-xs text-slate-400">
-                          🕐 {(preferences?.newsDigestTimes || alert.defaultTimes || []).join(', ')}
+                          🕐 {(preferences?.[alert.id === 'newsDigest' ? 'newsDigestTimes' : 'cryptoDigestTime'] || alert.defaultTimes || []).join(', ')}
                         </span>
                       )}
                       {alert.hasTime && !alert.hasMultipleTimes && (

@@ -71,18 +71,38 @@ app.http('SaveUserPreferences', {
             const entity = {
                 partitionKey: 'preferences',
                 rowKey: userId,
-                userId: userId,
-                preferencesJson: JSON.stringify(preferences),
                 
-                // Store key fields as columns for potential querying
+                // JSON storage for complex preferences
+                preferencesJson: JSON.stringify({
+                    telegramChatId: preferences.telegramChatId || '',
+                    whatsappNumber: preferences.whatsappNumber || '',
+                    preferredChannel: preferences.preferredChannel || 'telegram',
+                    
+                    alertTypes: preferences.alertTypes || {},
+                    
+                    // Time configurations
+                    morningForecastTime: preferences.morningForecastTime || '07:00',
+                    newsDigestTimes: preferences.newsDigestTimes || ['07:30', '18:00'],
+                    cryptoDigestTimes: preferences.cryptoDigestTimes || ['08:00', '20:00'],  // NEW
+                    
+                    // Thresholds
+                    stargazingThreshold: preferences.stargazingThreshold || 70,
+                    auroraThreshold: preferences.auroraThreshold || 50,
+                    
+                    // Quiet hours
+                    quietHoursEnabled: preferences.quietHoursEnabled || false,
+                    quietHoursStart: preferences.quietHoursStart || '23:00',
+                    quietHoursEnd: preferences.quietHoursEnd || '07:00',
+                }),
+                
+                // Telegram config
                 telegramEnabled: preferences.telegramEnabled || false,
                 telegramChatId: preferences.telegramChatId || '',
-                whatsappEnabled: preferences.whatsappEnabled || false,
-                whatsappNumber: preferences.whatsappNumber || '',
-                preferredChannel: preferences.preferredChannel || 'telegram',
                 
-                // Alert types (flattened for querying)
+                // Alert type flags (for backwards compatibility)
                 alertDailyForecast: preferences.alertTypes?.dailyForecast || false,
+                alertNewsDigest: preferences.alertTypes?.newsDigest || false,
+                alertCryptoDigest: preferences.alertTypes?.cryptoDigest || false,  // NEW
                 alertWeatherWarnings: preferences.alertTypes?.weatherWarnings || false,
                 alertTemperature: preferences.alertTypes?.temperatureAlerts || false,
                 alertStargazing: preferences.alertTypes?.stargazingAlerts || false,
