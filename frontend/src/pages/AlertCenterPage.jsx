@@ -334,9 +334,12 @@ const AlertCenterPage = () => {
         times: Array.isArray(savedTimes) ? [...savedTimes] : ['07:30', '18:00'],
       });
     } else {
+      // Check both key formats: frontend-style (e.g. auroraAlertsThreshold) and
+      // legacy backend-style (e.g. auroraThreshold / stargazingThreshold)
+      const legacyKey = alertType.replace('Alerts', '').replace('alerts', '') + 'Threshold';
       setEditValues({
         time: preferences?.[`${alertType}Time`] || config.defaultTime || '07:00',
-        threshold: preferences?.[`${alertType}Threshold`] || config.thresholdDefault || 65,
+        threshold: preferences?.[`${alertType}Threshold`] ?? preferences?.[legacyKey] ?? config.thresholdDefault ?? 65,
       });
     }
   };
@@ -360,10 +363,14 @@ const AlertCenterPage = () => {
           [timeKey]: sortedTimes,
         };
       } else {
+        // Save both frontend key (e.g. auroraAlertsThreshold) and legacy backend key
+        // (e.g. auroraThreshold) so both old and new backend versions work
+        const legacyKey = editingAlert.replace('Alerts', '').replace('alerts', '') + 'Threshold';
         updates = {
           ...preferences,
           [`${editingAlert}Time`]: editValues.time,
           [`${editingAlert}Threshold`]: editValues.threshold,
+          [legacyKey]: editValues.threshold,
         };
       }
       
@@ -545,7 +552,7 @@ const AlertCenterPage = () => {
       {/* ALERT LIST */}
       {/* ============================================ */}
       <div className="bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
+        <div id="your-alerts" className="px-5 py-4 border-b border-slate-800 flex items-center justify-between scroll-mt-20">
           <h2 className="text-lg font-semibold text-white flex items-center gap-2">
             <Bell className="w-5 h-5 text-cyan-400" />
             Your Alerts
@@ -564,7 +571,8 @@ const AlertCenterPage = () => {
             const Icon = alert.icon;
             const isEnabled = preferences?.alertTypes?.[alert.id] ?? false;
             const customTime = preferences?.[`${alert.id}Time`] || alert.defaultTime;
-            const customThreshold = preferences?.[`${alert.id}Threshold`] || alert.thresholdDefault;
+            const legacyThresholdKey = alert.id.replace('Alerts', '').replace('alerts', '') + 'Threshold';
+            const customThreshold = preferences?.[`${alert.id}Threshold`] ?? preferences?.[legacyThresholdKey] ?? alert.thresholdDefault;
 
             return (
               <div 
@@ -644,15 +652,18 @@ const AlertCenterPage = () => {
 
                 {/* Toggle */}
                 <button
+                  role="switch"
+                  aria-checked={isEnabled}
+                  aria-label={`${isEnabled ? 'Disable' : 'Enable'} ${alert.name}`}
                   onClick={() => toggleAlert(alert.id)}
                   className={`w-14 h-8 rounded-full transition-colors relative flex-shrink-0 ${
                     isEnabled ? 'bg-cyan-500' : 'bg-slate-700'
                   }`}
                 >
-                  <span 
+                  <span
                     className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all shadow-md ${
                       isEnabled ? 'left-7' : 'left-1'
-                    }`} 
+                    }`}
                   />
                 </button>
               </div>

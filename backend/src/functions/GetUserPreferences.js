@@ -53,8 +53,11 @@ app.http('GetUserPreferences', {
                 quietHoursStart: '23:00',
                 quietHoursEnd: '07:00',
 
-                // Thresholds
+                // Thresholds (both legacy and frontend key formats)
                 stargazingThreshold: 70,
+                stargazingAlertsThreshold: 70,
+                auroraThreshold: 50,
+                auroraAlertsThreshold: 50,
 
                 // Display
                 temperatureUnit: 'celsius',
@@ -101,7 +104,20 @@ app.http('GetUserPreferences', {
                     storedPrefs.whatsappEnabled = entity.whatsappEnabled;
                 }
                 // ====================================================
-            
+
+                // Sync threshold keys between legacy and frontend formats
+                // so both backend alerts and frontend UI read the correct value
+                if (storedPrefs.stargazingThreshold && !storedPrefs.stargazingAlertsThreshold) {
+                    storedPrefs.stargazingAlertsThreshold = storedPrefs.stargazingThreshold;
+                } else if (storedPrefs.stargazingAlertsThreshold && !storedPrefs.stargazingThreshold) {
+                    storedPrefs.stargazingThreshold = storedPrefs.stargazingAlertsThreshold;
+                }
+                if (storedPrefs.auroraThreshold && !storedPrefs.auroraAlertsThreshold) {
+                    storedPrefs.auroraAlertsThreshold = storedPrefs.auroraThreshold;
+                } else if (storedPrefs.auroraAlertsThreshold && !storedPrefs.auroraThreshold) {
+                    storedPrefs.auroraThreshold = storedPrefs.auroraAlertsThreshold;
+                }
+
                 // Merge with defaults (in case new fields were added)
                 const preferences = {
                     ...defaultPreferences,

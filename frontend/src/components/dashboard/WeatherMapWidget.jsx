@@ -61,21 +61,21 @@ const WeatherMapWidget = ({ lat, lon, locationName }) => {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.5 }}
-      className={`bg-dark-surface border border-dark-border rounded-xl overflow-hidden
+      className={`bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden
                 ${isExpanded ? 'fixed inset-4 z-50' : ''}`}
     >
       {/* Header */}
-      <div className="px-6 py-4 border-b border-dark-border">
+      <div className="px-6 py-4 border-b border-slate-800">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-dark-elevated rounded-lg">
-              <Map className="w-5 h-5 text-primary" />
+            <div className="p-2 bg-slate-800 rounded-lg">
+              <Map className="w-5 h-5 text-cyan-500" />
             </div>
             <div>
               <h3 className="text-lg font-semibold text-white">
                 Live Weather Map
               </h3>
-              <p className="text-sm text-gray-400">
+              <p className="text-sm text-slate-400">
                 {locationName || 'Weather radar & conditions'}
               </p>
             </div>
@@ -83,7 +83,7 @@ const WeatherMapWidget = ({ lat, lon, locationName }) => {
           
           <div className="flex items-center gap-2">
             {/* Layer Indicator */}
-            <span className="px-3 py-1 bg-dark-elevated rounded-lg text-sm text-gray-300">
+            <span className="px-3 py-1 bg-slate-800 rounded-lg text-sm text-slate-300">
               <Layers className="w-4 h-4 inline mr-1" />
               {layers.find(l => l.id === selectedLayer)?.name}
             </span>
@@ -91,13 +91,13 @@ const WeatherMapWidget = ({ lat, lon, locationName }) => {
             {/* Expand/Collapse Button */}
             <button
               onClick={() => setIsExpanded(!isExpanded)}
-              className="p-2 hover:bg-dark-elevated rounded-lg transition-colors"
+              className="p-2 hover:bg-slate-800 rounded-lg transition-colors"
               title={isExpanded ? 'Minimize' : 'Expand'}
             >
               {isExpanded ? (
-                <Minimize2 className="w-5 h-5 text-gray-400" />
+                <Minimize2 className="w-5 h-5 text-slate-400" />
               ) : (
-                <Maximize2 className="w-5 h-5 text-gray-400" />
+                <Maximize2 className="w-5 h-5 text-slate-400" />
               )}
             </button>
           </div>
@@ -114,8 +114,8 @@ const WeatherMapWidget = ({ lat, lon, locationName }) => {
               }}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200
                 ${selectedLayer === layer.id
-                  ? 'bg-primary text-white'
-                  : 'bg-dark-elevated text-gray-400 hover:text-white hover:bg-dark-border'
+                  ? 'bg-cyan-500 text-white'
+                  : 'bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700'
                 }`}
             >
               <span className="mr-1">{layer.icon}</span>
@@ -129,10 +129,10 @@ const WeatherMapWidget = ({ lat, lon, locationName }) => {
       <div className={`relative ${isExpanded ? 'h-[calc(100%-140px)]' : 'h-[500px]'}`}>
         {/* Loading Overlay */}
         {isLoading && (
-          <div className="absolute inset-0 bg-dark-elevated flex items-center justify-center z-10">
+          <div className="absolute inset-0 bg-slate-800 flex items-center justify-center z-10">
             <div className="text-center">
-              <Loader className="w-8 h-8 text-primary animate-spin mx-auto mb-2" />
-              <p className="text-gray-400">Loading weather map...</p>
+              <Loader className="w-8 h-8 text-cyan-500 animate-spin mx-auto mb-2" />
+              <p className="text-slate-400">Loading weather map...</p>
             </div>
           </div>
         )}
@@ -146,23 +146,23 @@ const WeatherMapWidget = ({ lat, lon, locationName }) => {
           frameBorder="0"
           title="Weather Map"
           onLoad={() => setIsLoading(false)}
-          className="bg-dark-bg"
+          className="bg-slate-950"
           allow="geolocation"
         />
 
 {/*         Coordinates Badge
-        <div className="absolute bottom-4 left-4 px-3 py-1.5 bg-dark-bg/80 backdrop-blur-sm 
-                      rounded-lg border border-dark-border">
-          <p className="text-xs text-gray-400 font-mono">
+        <div className="absolute bottom-4 left-4 px-3 py-1.5 bg-slate-950/80 backdrop-blur-sm 
+                      rounded-lg border border-slate-800">
+          <p className="text-xs text-slate-400 font-mono">
             📍 {latitude.toFixed(4)}, {longitude.toFixed(4)}
           </p>
         </div> */}
 
         {/* Powered by Windy Badge */}
-        {/* <div className="absolute bottom-4 right-4 px-3 py-1.5 bg-dark-bg/80 backdrop-blur-sm 
-                      rounded-lg border border-dark-border">
-          <p className="text-xs text-gray-500">
-            Powered by <span className="text-primary">Windy.com</span>
+        {/* <div className="absolute bottom-4 right-4 px-3 py-1.5 bg-slate-950/80 backdrop-blur-sm 
+                      rounded-lg border border-slate-800">
+          <p className="text-xs text-slate-500">
+            Powered by <span className="text-cyan-500">Windy.com</span>
           </p>
         </div> */}
       </div>
@@ -172,8 +172,8 @@ const WeatherMapWidget = ({ lat, lon, locationName }) => {
         <div className="absolute top-4 right-4 z-50">
           <button
             onClick={() => setIsExpanded(false)}
-            className="p-3 bg-dark-surface border border-dark-border rounded-lg 
-                     hover:bg-dark-elevated transition-colors shadow-lg"
+            className="p-3 bg-slate-900/50 border border-slate-800 rounded-lg 
+                     hover:bg-slate-800 transition-colors shadow-lg"
           >
             <Minimize2 className="w-6 h-6 text-white" />
           </button>

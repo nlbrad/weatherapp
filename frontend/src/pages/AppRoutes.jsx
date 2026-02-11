@@ -11,7 +11,7 @@
  * /                  → Alert Center (requires auth) - PRIMARY
  * /locations         → Location management (requires auth)
  * /locations/new     → Add new location (requires auth)
- * /dashboard         → Dashboard selector (requires auth) - SECONDARY
+ * /dashboard         → Redirects to /locations
  * /dashboard/:id     → Full dashboard for location (requires auth)
  * /preferences       → Notification settings (requires auth)
  * /alerts/history    → Alert history (requires auth)
@@ -32,40 +32,9 @@ import LocationsPage from './LocationsPage';
 import NewLocationPage from './NewLocationPage';
 import DashboardPage from './DashboardPage';
 import PreferencesPage from './PreferencesPage';
+import AlertHistoryPage from './AlertHistoryPage';
 
 // Placeholder pages (to be built)
-const DashboardSelectorPage = () => (
-  <div className="space-y-6">
-    <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-xl p-4 flex items-start gap-3">
-      <div className="w-8 h-8 bg-cyan-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
-        <span className="text-cyan-400">✨</span>
-      </div>
-      <div>
-        <p className="text-cyan-300 font-medium">Bonus Feature!</p>
-        <p className="text-cyan-400/70 text-sm">
-          Dashboards are an extra feature. Your alerts work perfectly without this page.
-        </p>
-      </div>
-    </div>
-    <div className="text-center py-12">
-      <p className="text-slate-400 mb-4">Select a location from the Locations page to view its dashboard.</p>
-      <a 
-        href="/locations" 
-        className="text-cyan-400 hover:text-cyan-300 underline"
-      >
-        Go to Locations →
-      </a>
-    </div>
-  </div>
-);
-
-const AlertHistoryPage = () => (
-  <div className="text-center py-12">
-    <h2 className="text-xl font-bold text-white mb-2">Alert History</h2>
-    <p className="text-slate-400">Full alert history coming soon...</p>
-  </div>
-);
-
 const AlertEditPage = () => (
   <div className="text-center py-12">
     <h2 className="text-xl font-bold text-white mb-2">Edit Alert</h2>
@@ -129,26 +98,19 @@ const AppRoutes = () => {
         } 
       />
 
-      {/* Dashboard Selector (bonus feature) */}
-      <Route 
-        path="/dashboard" 
+      {/* /dashboard redirects to locations (dashboards accessed via location cards) */}
+      <Route path="/dashboard" element={<Navigate to="/locations" replace />} />
+
+      {/* Dashboard for specific location */}
+      <Route
+        path="/dashboard/:locationId"
         element={
           <ProtectedRoute>
             <AppLayout>
-              <DashboardSelectorPage />
+              <DashboardPage />
             </AppLayout>
           </ProtectedRoute>
-        } 
-      />
-
-      {/* Dashboard for specific location */}
-      <Route 
-        path="/dashboard/:locationId" 
-        element={
-          <ProtectedRoute>
-            <DashboardPage />
-          </ProtectedRoute>
-        } 
+        }
       />
 
       {/* Preferences / Settings */}

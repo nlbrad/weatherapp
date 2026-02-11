@@ -121,17 +121,17 @@ const MoonWidget = ({ forecast }) => {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.7 }}
-      className="bg-dark-surface border border-dark-border rounded-xl overflow-hidden"
+      className="bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden"
     >
       {/* Header */}
-      <div className="px-6 py-4 border-b border-dark-border">
+      <div className="px-6 py-4 border-b border-slate-800">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-lg font-semibold text-white flex items-center gap-2">
               <Moon className="w-5 h-5 text-blue-400" />
               Moon
             </h3>
-            <p className="text-sm text-gray-400 mt-1">
+            <p className="text-sm text-slate-400 mt-1">
               Lunar phase and visibility
             </p>
           </div>
@@ -162,7 +162,7 @@ const MoonWidget = ({ forecast }) => {
                 
                 {/* Shadow overlay based on phase */}
                 <div 
-                  className="absolute inset-0 bg-dark-bg transition-all duration-1000"
+                  className="absolute inset-0 bg-slate-950 transition-all duration-1000"
                   style={{
                     clipPath: moonPhase.phase < 4
                       ? `inset(0 ${(1 - moonPhase.illumination) * 100}% 0 0)`
@@ -178,7 +178,7 @@ const MoonWidget = ({ forecast }) => {
             </div>
             
             {/* Illumination */}
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-slate-400">
               <span className="text-white font-bold">{Math.round(moonPhase.illumination * 100)}%</span> illuminated
             </p>
           </div>
@@ -187,39 +187,39 @@ const MoonWidget = ({ forecast }) => {
           <div className="flex-1">
             {/* Phase description */}
             <div className="mb-4">
-              <p className="text-sm text-gray-400 mb-1">Current Phase</p>
+              <p className="text-sm text-slate-400 mb-1">Current Phase</p>
               <p className="text-lg font-semibold text-white">{moonPhase.name}</p>
-              <p className="text-sm text-gray-500 mt-1">{moonPhase.description}</p>
+              <p className="text-sm text-slate-500 mt-1">{moonPhase.description}</p>
             </div>
 
             {/* Moonrise/Moonset times */}
             <div className="grid grid-cols-2 gap-3 mb-4">
-              <div className="bg-dark-elevated border border-dark-border rounded-lg p-3">
+              <div className="bg-slate-800 border border-slate-800 rounded-lg p-3">
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
                     <ArrowUp className="w-4 h-4 text-blue-400" />
-                    <p className="text-xs text-gray-400">Moonrise</p>
+                    <p className="text-xs text-slate-400">Moonrise</p>
                   </div>
-                  <span className="text-xs text-gray-500 font-mono">{moonriseDir.dir}</span>
+                  <span className="text-xs text-slate-500 font-mono">{moonriseDir.dir}</span>
                 </div>
                 <p className="text-lg font-bold text-white font-mono">
                   {formatTimeInZone(moonrise)}
                 </p>
-                <p className="text-xs text-gray-500">{moonriseDir.azimuth} azimuth</p>
+                <p className="text-xs text-slate-500">{moonriseDir.azimuth} azimuth</p>
               </div>
 
-              <div className="bg-dark-elevated border border-dark-border rounded-lg p-3">
+              <div className="bg-slate-800 border border-slate-800 rounded-lg p-3">
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
                     <ArrowDown className="w-4 h-4 text-blue-400" />
-                    <p className="text-xs text-gray-400">Moonset</p>
+                    <p className="text-xs text-slate-400">Moonset</p>
                   </div>
-                  <span className="text-xs text-gray-500 font-mono">{moonsetDir.dir}</span>
+                  <span className="text-xs text-slate-500 font-mono">{moonsetDir.dir}</span>
                 </div>
                 <p className="text-lg font-bold text-white font-mono">
                   {formatTimeInZone(moonset)}
                 </p>
-                <p className="text-xs text-gray-500">{moonsetDir.azimuth} azimuth</p>
+                <p className="text-xs text-slate-500">{moonsetDir.azimuth} azimuth</p>
               </div>
             </div>
 
@@ -228,7 +228,7 @@ const MoonWidget = ({ forecast }) => {
               <div className="flex items-center gap-2">
                 <span className="text-lg">🌕</span>
                 <div>
-                  <p className="text-xs text-gray-500">Full Moon</p>
+                  <p className="text-xs text-slate-500">Full Moon</p>
                   <p className="text-white font-semibold">
                     {moonPhase.daysToFull === 0 ? 'Today!' : `in ${moonPhase.daysToFull} days`}
                   </p>
@@ -237,7 +237,7 @@ const MoonWidget = ({ forecast }) => {
               <div className="flex items-center gap-2">
                 <span className="text-lg">🌑</span>
                 <div>
-                  <p className="text-xs text-gray-500">New Moon</p>
+                  <p className="text-xs text-slate-500">New Moon</p>
                   <p className="text-white font-semibold">
                     {moonPhase.daysToNew === 0 ? 'Today!' : `in ${moonPhase.daysToNew} days`}
                   </p>
@@ -249,13 +249,13 @@ const MoonWidget = ({ forecast }) => {
 
         {/* Moon visibility status */}
         {isMoonVisible !== null && (
-          <div className="mt-4 pt-4 border-t border-dark-border">
+          <div className="mt-4 pt-4 border-t border-slate-800">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-400">Moon visibility:</span>
+              <span className="text-sm text-slate-400">Moon visibility:</span>
               <span className={`px-3 py-1 rounded-lg text-xs font-semibold ${
                 isMoonVisible 
                   ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                  : 'bg-gray-500/20 text-gray-400 border border-gray-500/30'
+                  : 'bg-gray-500/20 text-slate-400 border border-gray-500/30'
               }`}>
                 {isMoonVisible ? '🌙 Visible now' : '👀 Below horizon'}
               </span>

@@ -19,9 +19,9 @@ const AirQualityBreakdown = ({ airQuality, compact = false }) => {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-dark-surface border border-dark-border rounded-xl p-6"
+        className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6"
       >
-        <p className="text-gray-400 text-sm">Air quality data unavailable</p>
+        <p className="text-slate-400 text-sm">Air quality data unavailable</p>
       </motion.div>
     );
   }
@@ -160,16 +160,16 @@ const AirQualityBreakdown = ({ airQuality, compact = false }) => {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.3 }}
-      className="bg-dark-surface border border-dark-border rounded-xl overflow-hidden"
+      className="bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden"
     >
       {/* Header */}
-      <div className="px-5 py-3 border-b border-dark-border">
+      <div className="px-5 py-3 border-b border-slate-800">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-            <Wind className="w-4 h-4 text-primary" />
+            <Wind className="w-4 h-4 text-cyan-500" />
             Air Quality
           </h3>
-          <div className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${rating.color} bg-dark-elevated border border-dark-border`}>
+          <div className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${rating.color} bg-slate-800 border border-slate-800`}>
             {rating.label}
           </div>
         </div>
@@ -207,7 +207,7 @@ const AirQualityBreakdown = ({ airQuality, compact = false }) => {
             {/* Score in center */}
             <div className="absolute inset-0 flex flex-col items-center justify-center">
               <span className={`text-xl font-bold ${rating.color}`}>{score}</span>
-              <span className="text-[10px] text-gray-500">/ 100</span>
+              <span className="text-[10px] text-slate-500">/ 100</span>
             </div>
           </div>
 
@@ -217,12 +217,12 @@ const AirQualityBreakdown = ({ airQuality, compact = false }) => {
               <span className="text-xl">{rating.emoji}</span>
               <span className={`text-base font-bold ${rating.color}`}>{rating.label}</span>
             </div>
-            <p className="text-xs text-gray-400 mb-2">{rating.advice}</p>
+            <p className="text-xs text-slate-400 mb-2">{rating.advice}</p>
             <div className="flex flex-wrap gap-1">
               {rating.activities.slice(0, 3).map((activity, i) => (
                 <span 
                   key={i}
-                  className="px-1.5 py-0.5 bg-dark-elevated rounded text-[10px] text-gray-400"
+                  className="px-1.5 py-0.5 bg-slate-800 rounded text-[10px] text-slate-400"
                 >
                   {activity}
                 </span>
@@ -238,20 +238,20 @@ const AirQualityBreakdown = ({ airQuality, compact = false }) => {
             return (
               <div 
                 key={pollutant.name}
-                className="bg-dark-elevated border border-dark-border rounded-lg px-3 py-2"
+                className="bg-slate-800 border border-slate-800 rounded-lg px-3 py-2"
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-[10px] text-gray-500">{pollutant.label}</p>
+                    <p className="text-[10px] text-slate-500">{pollutant.label}</p>
                     <div className="flex items-baseline gap-1">
                       <span className="text-sm font-bold text-white font-mono">
                         {pollutant.value.toFixed(1)}
                       </span>
-                      <span className="text-[10px] text-gray-500">µg/m³</span>
+                      <span className="text-[10px] text-slate-500">µg/m³</span>
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className="text-xs font-medium text-gray-400">{pollutant.name}</span>
+                    <span className="text-xs font-medium text-slate-400">{pollutant.name}</span>
                     <p className={`text-xs font-bold ${status.color}`}>
                       {status.icon} {status.status}
                     </p>
@@ -263,11 +263,11 @@ const AirQualityBreakdown = ({ airQuality, compact = false }) => {
         </div>
 
         {/* Bottom info */}
-        <div className="mt-3 pt-2 border-t border-dark-border flex items-center justify-between">
-          <span className="text-[10px] text-gray-500">
+        <div className="mt-3 pt-2 border-t border-slate-800 flex items-center justify-between">
+          <span className="text-[10px] text-slate-500">
             WHO guidelines
           </span>
-          <span className="text-[10px] text-gray-500">
+          <span className="text-[10px] text-slate-500">
             Higher score = Better air
           </span>
         </div>

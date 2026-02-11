@@ -447,7 +447,7 @@ async function processAllUsersForStargazingAlerts(context, force = false) {
             
             // Get values from flat columns first, fall back to nested JSON
             const chatId = user.telegramChatId || prefs.telegramChatId;
-            const threshold = user.stargazingThreshold || prefs.stargazingThreshold || 65;
+            const threshold = user.stargazingThreshold || prefs.stargazingAlertsThreshold || prefs.stargazingThreshold || 65;
             
             // Get user's saved location from UserLocations table
             const userLocation = await getUserLocation(userId, context);
@@ -536,33 +536,11 @@ async function fetchWeatherData(lat, lon, context) {
     }
 }
 
+// Shared Telegram utility
+const { sendTelegramMessage: _sendTelegram } = require('../utils/telegramHelper');
 async function sendTelegramMessage(chatId, message) {
-    const token = process.env.TELEGRAM_BOT_TOKEN;
-    
-    if (!token) {
-        console.error('TELEGRAM_BOT_TOKEN not configured');
-        return false;
-    }
-    
-    const url = `https://api.telegram.org/bot${token}/sendMessage`;
-    
-    try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                chat_id: chatId,
-                text: message,
-                parse_mode: 'Markdown'
-            })
-        });
-        
-        const result = await response.json();
-        return result.ok === true;
-    } catch (error) {
-        console.error('Telegram send error:', error.message);
-        return false;
-    }
+    const result = await _sendTelegram(chatId, message);
+    return result.ok === true;
 }
 
 module.exports = {

@@ -567,75 +567,11 @@ async function sendToAllUsers(context, period, force = false) {
 }
 
 // ============================================
-// TELEGRAM
+// TELEGRAM (shared utility)
 // ============================================
-const TELEGRAM_MAX_LENGTH = 4096;
-
+const { sendTelegramMessage: _sendTelegramShared } = require('../utils/telegramHelper');
 async function sendTelegramMessage(chatId, message, context = null) {
-    const token = process.env.TELEGRAM_BOT_TOKEN;
-    
-    if (!token) {
-        if (context) context.error('TELEGRAM_BOT_TOKEN not set');
-        return { ok: false, error: 'Bot token not configured' };
-    }
-    
-    if (!chatId) {
-        if (context) context.error('No chatId provided');
-        return { ok: false, error: 'No chat ID provided' };
-    }
-    
-    // Truncate message if too long
-    let finalMessage = message;
-    if (message.length > TELEGRAM_MAX_LENGTH) {
-        if (context) context.warn(`Message too long (${message.length} chars), truncating...`);
-        finalMessage = message.substring(0, TELEGRAM_MAX_LENGTH - 50) + '\n\n... <i>truncated</i>';
-    }
-    
-    try {
-        const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                chat_id: chatId,
-                text: finalMessage,
-                parse_mode: 'HTML',  // HTML is more forgiving than Markdown
-                disable_web_page_preview: true,
-            })
-        });
-        
-        const result = await response.json();
-        
-        if (result.ok) {
-            if (context) context.log('Telegram message sent successfully');
-            return { ok: true };
-        } else {
-            if (context) context.error('Telegram API error:', result.description);
-            
-            // If HTML parsing failed, try without parse_mode
-            if (result.description?.includes('parse') || result.description?.includes('entities')) {
-                if (context) context.log('Retrying without formatting...');
-                const retryResponse = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        chat_id: chatId,
-                        text: finalMessage.replace(/<[^>]+>/g, ''), // Strip all HTML tags
-                        disable_web_page_preview: true,
-                    })
-                });
-                const retryResult = await retryResponse.json();
-                if (retryResult.ok) {
-                    return { ok: true, warning: 'Sent without formatting' };
-                }
-                return { ok: false, error: retryResult.description || 'Telegram API error' };
-            }
-            
-            return { ok: false, error: result.description || 'Telegram API error' };
-        }
-    } catch (error) {
-        if (context) context.error('Telegram fetch error:', error.message);
-        return { ok: false, error: error.message };
-    }
+    return _sendTelegramShared(chatId, message, context, { parseMode: 'HTML', disablePreview: true });
 }
 
 module.exports = {

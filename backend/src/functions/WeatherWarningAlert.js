@@ -452,28 +452,12 @@ async function checkAndSendWarnings(context, force = false) {
 }
 
 // ============================================
-// Telegram
+// Telegram (shared utility)
 // ============================================
+const { sendTelegramMessage: _sendTelegram } = require('../utils/telegramHelper');
 async function sendTelegramMessage(chatId, message) {
-    const token = process.env.TELEGRAM_BOT_TOKEN;
-    if (!token) return false;
-    
-    try {
-        const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                chat_id: chatId,
-                text: message,
-                parse_mode: 'Markdown'
-            })
-        });
-        const result = await response.json();
-        return result.ok === true;
-    } catch (error) {
-        console.error('Telegram error:', error.message);
-        return false;
-    }
+    const result = await _sendTelegram(chatId, message);
+    return result.ok === true;
 }
 
 module.exports = {

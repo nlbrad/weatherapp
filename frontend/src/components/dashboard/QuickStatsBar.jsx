@@ -24,9 +24,9 @@ const QuickStatsBar = ({ weather, forecast }) => {
     } else if (diff < -2) {
       return { message: '☀️ Sun making it feel warmer', color: 'text-orange-400' };
     } else if (diff > 1) {
-      return { message: 'Slight wind chill', color: 'text-gray-400' };
+      return { message: 'Slight wind chill', color: 'text-slate-400' };
     }
-    return { message: 'Feels accurate', color: 'text-gray-500' };
+    return { message: 'Feels accurate', color: 'text-slate-500' };
   };
 
   // Get air quality label
@@ -46,7 +46,7 @@ const QuickStatsBar = ({ weather, forecast }) => {
 
   // Get air quality color
   const getAirQualityColor = () => {
-    if (!weather.airQuality || !weather.airQuality.aqi) return 'text-gray-400';
+    if (!weather.airQuality || !weather.airQuality.aqi) return 'text-slate-400';
     
     const aqi = weather.airQuality.aqi;
     if (aqi === 1) return 'text-accent-green';
@@ -62,7 +62,7 @@ const QuickStatsBar = ({ weather, forecast }) => {
   const getUVInfo = () => {
     // UV is always 0 at night
     if (isNight) {
-      return { level: 'None', color: 'text-gray-500', bgColor: 'bg-gray-500/10', advice: 'No UV at night' };
+      return { level: 'None', color: 'text-slate-500', bgColor: 'bg-gray-500/10', advice: 'No UV at night' };
     }
     
     const uvi = forecast?.current?.uvi || forecast?.daily?.[0]?.uvi || 0;
@@ -80,10 +80,10 @@ const QuickStatsBar = ({ weather, forecast }) => {
     
     if (clouds <= 10) return { label: 'Clear', icon: isNight ? '🌙' : '☀️', color: isNight ? 'text-blue-300' : 'text-yellow-400' };
     if (clouds <= 25) return { label: 'Mostly Clear', icon: isNight ? '🌙' : '🌤️', color: isNight ? 'text-blue-300' : 'text-yellow-300' };
-    if (clouds <= 50) return { label: 'Partly Cloudy', icon: isNight ? '☁️' : '⛅', color: 'text-gray-300' };
-    if (clouds <= 75) return { label: 'Mostly Cloudy', icon: '🌥️', color: 'text-gray-400' };
-    if (clouds <= 90) return { label: 'Cloudy', icon: '☁️', color: 'text-gray-400' };
-    return { label: 'Overcast', icon: '☁️', color: 'text-gray-500' };
+    if (clouds <= 50) return { label: 'Partly Cloudy', icon: isNight ? '☁️' : '⛅', color: 'text-slate-300' };
+    if (clouds <= 75) return { label: 'Mostly Cloudy', icon: '🌥️', color: 'text-slate-400' };
+    if (clouds <= 90) return { label: 'Cloudy', icon: '☁️', color: 'text-slate-400' };
+    return { label: 'Overcast', icon: '☁️', color: 'text-slate-500' };
   };
 
   // Get weather icon based on condition - day/night aware
@@ -241,9 +241,9 @@ const QuickStatsBar = ({ weather, forecast }) => {
       value: `${weather.pressure}`,
       subValue: weather.pressure > 1020 ? 'High (fair)' : weather.pressure < 1010 ? 'Low (unsettled)' : 'Normal',
       extraInfo: 'hPa',
-      extraColor: 'text-gray-500',
+      extraColor: 'text-slate-500',
       icon: Gauge,
-      color: weather.pressure > 1020 ? 'text-green-400' : weather.pressure < 1010 ? 'text-yellow-400' : 'text-gray-400'
+      color: weather.pressure > 1020 ? 'text-green-400' : weather.pressure < 1010 ? 'text-yellow-400' : 'text-slate-400'
     },
     {
       id: 'uv',
@@ -279,7 +279,7 @@ const QuickStatsBar = ({ weather, forecast }) => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.05 }}
-              className={`bg-dark-surface border border-dark-border rounded-xl p-3 
+              className={`bg-slate-900/50 border border-slate-800 rounded-2xl p-3 
                        hover:border-primary/30 transition-all duration-300
                        ${stat.bgHighlight || ''}`}
             >
@@ -291,11 +291,11 @@ const QuickStatsBar = ({ weather, forecast }) => {
                     <p className="text-lg text-white font-semibold capitalize">{stat.label}</p>
                   </div>
                   <div className="flex items-center justify-between">
-                    <p className="text-sm text-gray-400 font-mono">{stat.subValue}</p>
-                    <p className="text-xs text-gray-500">{stat.visibilityInfo}</p>
+                    <p className="text-sm text-slate-400 font-mono">{stat.subValue}</p>
+                    <p className="text-xs text-slate-500">{stat.visibilityInfo}</p>
                   </div>
                   {stat.extraInfo && (
-                    <p className="text-xs text-primary mt-2 flex items-center gap-1">
+                    <p className="text-xs text-cyan-500 mt-2 flex items-center gap-1">
                       <span>{stat.extraIcon}</span> 
                       <span>{stat.extraInfo}</span>
                     </p>
@@ -305,19 +305,19 @@ const QuickStatsBar = ({ weather, forecast }) => {
                 /* Special layout for Temperature */
                 <>
                   <div className="flex items-start justify-between mb-1">
-                    <div className={`p-1.5 bg-dark-elevated rounded-lg ${stat.color}`}>
+                    <div className={`p-1.5 bg-slate-800 rounded-lg ${stat.color}`}>
                       <Icon className="w-4 h-4" />
                     </div>
                     {stat.dewPoint && (
-                      <span className="text-xs text-gray-500">
-                        Dew <span className="text-gray-400 font-mono">{stat.dewPoint}</span>
+                      <span className="text-xs text-slate-500">
+                        Dew <span className="text-slate-400 font-mono">{stat.dewPoint}</span>
                       </span>
                     )}
                   </div>
                   <p className="text-xl font-bold font-mono text-white mb-0.5">
                     {stat.value}
                   </p>
-                  <p className="text-xs text-gray-400">{stat.subValue}</p>
+                  <p className="text-xs text-slate-400">{stat.subValue}</p>
                   {stat.extraInfo && (
                     <p className={`text-xs mt-1 truncate ${stat.extraColor}`}>{stat.extraInfo}</p>
                   )}
@@ -326,7 +326,7 @@ const QuickStatsBar = ({ weather, forecast }) => {
                 /* Standard layout for other stats */
                 <>
                   <div className="flex items-start justify-between mb-2">
-                    <div className={`p-1.5 bg-dark-elevated rounded-lg ${stat.color}`}>
+                    <div className={`p-1.5 bg-slate-800 rounded-lg ${stat.color}`}>
                       <Icon className="w-4 h-4" />
                     </div>
                     {stat.emoji && (
@@ -338,8 +338,8 @@ const QuickStatsBar = ({ weather, forecast }) => {
                     <p className="text-xl font-bold font-mono text-white mb-0.5 capitalize truncate">
                       {stat.value}
                     </p>
-                    <p className="text-xs text-gray-400 truncate">{stat.label}</p>
-                    <p className="text-xs text-gray-500 truncate">{stat.subValue}</p>
+                    <p className="text-xs text-slate-400 truncate">{stat.label}</p>
+                    <p className="text-xs text-slate-500 truncate">{stat.subValue}</p>
                     {stat.extraInfo && (
                       <p className={`text-xs mt-0.5 truncate ${stat.extraColor}`}>{stat.extraInfo}</p>
                     )}

@@ -1,55 +1,60 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Loader, Cloud } from 'lucide-react';
-import { locationsAPI } from '../services/api';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useParams, Link } from 'react-router-dom';
+import { ArrowLeft, Loader, Cloud, RefreshCw, MapPin, Clock, Settings2, Check } from 'lucide-react';
+import { ResponsiveGridLayout, useContainerWidth } from 'react-grid-layout';
+import 'react-grid-layout/css/styles.css';
+import 'react-resizable/css/styles.css';
+import { useAuth } from '../auth';
+import { locationsAPI, scoresAPI } from '../services/api';
 import weatherCache from '../services/weatherCache';
-import QuickStatsBar from '../components/dashboard/QuickStatsBar';
-import WindAnalysis from '../components/dashboard/WindAnalysis';
-import AirQualityBreakdown from '../components/dashboard/AirQualityBreakdown';
-import MetricsGrid from '../components/dashboard/MetricsGrid';
-import TemperatureForecast from '../components/dashboard/TemperatureForecast';
-import HourlyForecast from '../components/dashboard/HourlyForecast';
-import SunWidget from '../components/dashboard/SunWidget';
-import MoonWidget from '../components/dashboard/MoonWidget';
-import WeatherMapWidget from '../components/dashboard/WeatherMapWidget';
-import WeatherAlertBanner from '../components/dashboard/WeatherAlertBanner';
+import scoreCache from '../services/scoreCache';
+import useDashboardLayout from '../hooks/useDashboardLayout';
+import WidgetWrapper from '../components/dashboard/WidgetWrapper';
+import WidgetCatalog from '../components/dashboard/WidgetCatalog';
+import { WIDGET_REGISTRY, GRID_CONFIG } from '../components/dashboard/widgetRegistry';
 
 /**
- * DashboardPage - Full dashboard view for single location
- * 
- * OPTIMIZED VERSION:
- * - Uses weatherCache for smart caching (10 min TTL)
- * - Single API call (GetWeatherData) instead of multiple
- * - Background refresh for stale data
- * - Auto-refresh every 10 minutes
- * 
+ * DashboardPage - Customizable widget-based dashboard for a location
+ *
  * Route: /dashboard/:locationId
- * Example: /dashboard/dublin-ie
  */
-
 const DashboardPage = () => {
   const { locationId } = useParams();
-  const navigate = useNavigate();
-  const userId = 'user123'; // TODO: Replace with real auth
+  const { getUserId } = useAuth();
+  const userId = getUserId();
 
   const [location, setLocation] = useState(null);
   const [weatherData, setWeatherData] = useState(null);
+  const [scoreData, setScoreData] = useState({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const { ref: gridContainerRef, width: containerWidth } = useContainerWidth({ initialWidth: 1400 });
+
+  const {
+    layouts,
+    enabledWidgets,
+    isLoaded: layoutLoaded,
+    handleLayoutChange,
+    addWidget,
+    removeWidget,
+    resetLayout,
+  } = useDashboardLayout(locationId, userId);
 
   // Parse locationId (format: "dublin-ie")
   const parseLocationId = (id) => {
     const parts = id.split('-');
     const country = parts.pop().toUpperCase();
-    const name = parts.join('-').split('-').map(w => 
+    const name = parts.join('-').split('-').map(w =>
       w.charAt(0).toUpperCase() + w.slice(1)
     ).join(' ');
     return { name, country };
   };
 
-  // Load dashboard data
+  // Load weather data
   const loadDashboard = useCallback(async (forceRefresh = false) => {
     try {
       if (forceRefresh) {
@@ -61,10 +66,9 @@ const DashboardPage = () => {
 
       const { name, country } = parseLocationId(locationId);
 
-      // Load location settings from database
       const locationsData = await locationsAPI.getUserLocations(userId);
       const locationSettings = locationsData.locations.find(
-        loc => loc.locationName.toLowerCase() === name.toLowerCase() && 
+        loc => loc.locationName.toLowerCase() === name.toLowerCase() &&
                loc.country === country
       );
 
@@ -78,7 +82,6 @@ const DashboardPage = () => {
         return;
       }
 
-      // Get weather data from cache (or fetch if needed)
       const data = await weatherCache.get(
         locationSettings.latitude,
         locationSettings.longitude,
@@ -115,19 +118,162 @@ const DashboardPage = () => {
   // Auto-refresh every 10 minutes
   useEffect(() => {
     const interval = setInterval(() => {
-      console.log('⏰ Auto-refreshing dashboard...');
       loadDashboard(true);
     }, 10 * 60 * 1000);
     return () => clearInterval(interval);
   }, [loadDashboard]);
 
+  // Fetch score data for enabled score-based widgets
+  useEffect(() => {
+    if (!location || !enabledWidgets.length) return;
+
+    const scoreEndpoints = new Set();
+    enabledWidgets.forEach(widgetId => {
+      const config = WIDGET_REGISTRY[widgetId];
+      if (config?.scoreEndpoint) {
+        scoreEndpoints.add(config.scoreEndpoint);
+      }
+    });
+
+    if (scoreEndpoints.size === 0) return;
+
+    const fetchScores = async () => {
+      const { latitude: lat, longitude: lon } = location;
+      const fetchers = {
+        aurora: () => scoresAPI.getAuroraScore(lat, lon),
+        sky: () => scoresAPI.getSkyScore(lat, lon),
+        outdoor: () => scoresAPI.getOutdoorScore(lat, lon),
+        swimming: () => scoresAPI.getSwimmingScore(lat, lon),
+      };
+
+      const results = {};
+      const promises = Array.from(scoreEndpoints).map(async (endpoint) => {
+        try {
+          const data = await scoreCache.get(endpoint, lat, lon, fetchers[endpoint]);
+          results[endpoint] = data;
+        } catch (e) {
+          console.warn(`Failed to fetch ${endpoint} score:`, e);
+          results[endpoint] = { error: true };
+        }
+      });
+
+      await Promise.allSettled(promises);
+      setScoreData(results);
+    };
+
+    fetchScores();
+  }, [location, enabledWidgets]);
+
+  // Transform weatherData for widget props
+  const weather = useMemo(() => {
+    if (!weatherData) return null;
+    return {
+      temp: weatherData.current.temp,
+      feelsLike: weatherData.current.feelsLike,
+      humidity: weatherData.current.humidity,
+      pressure: weatherData.current.pressure,
+      condition: weatherData.current.condition,
+      description: weatherData.current.description,
+      icon: weatherData.current.icon,
+      visibility: (weatherData.current.visibility || 10000) / 1000,
+      clouds: weatherData.current.clouds || 0,
+      wind: {
+        speed: weatherData.current.windSpeed || 0,
+        direction: weatherData.current.windDeg || 0,
+        gust: weatherData.current.windGust || 0,
+      },
+      airQuality: weatherData.airQuality,
+    };
+  }, [weatherData]);
+
+  const forecast = useMemo(() => {
+    if (!weatherData || !location) return null;
+    return {
+      current: {
+        timezone: weatherData.timezone,
+        sunrise: weatherData.current.sunrise,
+        sunset: weatherData.current.sunset,
+        uvi: weatherData.current.uvi,
+        dew_point: weatherData.current.dew_point,
+        clouds: weatherData.current.clouds,
+      },
+      hourly: weatherData.hourly.map(h => ({
+        time: h.dt,
+        temp: h.temp,
+        feelsLike: h.feelsLike,
+        humidity: h.humidity,
+        pressure: h.pressure,
+        clouds: h.clouds,
+        pop: h.pop,
+        rain: h.rain,
+        snow: h.snow,
+        condition: h.condition,
+        description: h.description,
+        icon: h.icon,
+        windSpeed: h.windSpeed,
+        windDeg: h.windDeg,
+      })),
+      daily: weatherData.daily.map(d => ({
+        date: d.dt,
+        tempHigh: d.tempMax,
+        tempLow: d.tempMin,
+        tempMorn: d.tempMorn,
+        tempDay: d.tempDay,
+        tempEve: d.tempEve,
+        tempNight: d.tempNight,
+        feelsLikeDay: d.feelsLikeDay,
+        feelsLikeNight: d.feelsLikeNight,
+        humidity: d.humidity,
+        pressure: d.pressure,
+        clouds: d.clouds,
+        windSpeed: d.windSpeed,
+        windDeg: d.windDeg,
+        pop: d.pop,
+        rain: d.rain,
+        snow: d.snow,
+        condition: d.condition,
+        description: d.description,
+        icon: d.icon,
+        uvi: d.uvi,
+        sunrise: d.sunrise,
+        sunset: d.sunset,
+        moonrise: d.moonrise,
+        moonset: d.moonset,
+        moonPhase: d.moonPhase,
+      })),
+      alerts: weatherData.alerts || [],
+      location: { lat: location.latitude, lon: location.longitude },
+    };
+  }, [weatherData, location]);
+
+  // Get props for a specific widget based on its data requirements
+  const getWidgetProps = useCallback((widgetId) => {
+    const config = WIDGET_REGISTRY[widgetId];
+    if (!config) return {};
+
+    const props = {};
+    if (config.dataRequirements.includes('weather')) props.weather = weather;
+    if (config.dataRequirements.includes('forecast')) props.forecast = forecast;
+    if (config.dataRequirements.includes('location') && location) {
+      props.location = {
+        lat: location.latitude,
+        lon: location.longitude,
+        name: location.locationName,
+      };
+    }
+    if (config.dataRequirements.includes('scores') && config.scoreEndpoint) {
+      props.scoreData = scoreData[config.scoreEndpoint] || null;
+    }
+    return props;
+  }, [weather, forecast, location, scoreData]);
+
   // Loading state
-  if (loading) {
+  if (loading || !layoutLoaded) {
     return (
-      <div className="min-h-screen bg-dark-bg flex items-center justify-center">
+      <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center">
-          <Loader className="w-12 h-12 animate-spin text-primary mx-auto mb-4" />
-          <p className="text-gray-400">Loading dashboard...</p>
+          <Loader className="w-8 h-8 text-cyan-500 animate-spin mx-auto mb-4" />
+          <p className="text-slate-400">Loading dashboard...</p>
         </div>
       </div>
     );
@@ -136,208 +282,199 @@ const DashboardPage = () => {
   // Error state
   if (error || !location || !weatherData) {
     return (
-      <div className="min-h-screen bg-dark-bg flex items-center justify-center">
+      <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center">
-          <Cloud className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+          <Cloud className="w-12 h-12 text-slate-600 mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-white mb-2">
             {error || 'Location not found'}
           </h2>
-          <button
-            onClick={() => navigate('/')}
-            className="mt-4 px-6 py-2 bg-primary text-white rounded-lg 
-                     hover:bg-primary-dark transition-colors"
+          <Link
+            to="/locations"
+            className="inline-flex items-center gap-2 mt-4 text-cyan-400 hover:text-cyan-300 text-sm"
           >
+            <ArrowLeft className="w-4 h-4" />
             Back to Locations
-          </button>
+          </Link>
         </div>
       </div>
     );
   }
 
-  // Transform weatherData to the format components expect
-  const weather = {
-    temp: weatherData.current.temp,
-    feelsLike: weatherData.current.feelsLike,
-    humidity: weatherData.current.humidity,
-    pressure: weatherData.current.pressure,
-    condition: weatherData.current.condition,
-    description: weatherData.current.description,
-    icon: weatherData.current.icon,
-    visibility: (weatherData.current.visibility || 10000) / 1000,
-    clouds: weatherData.current.clouds || 0,
-    wind: {
-      speed: weatherData.current.windSpeed || 0,
-      direction: weatherData.current.windDeg || 0,
-      gust: weatherData.current.windGust || 0
-    },
-    airQuality: weatherData.airQuality
-  };
-
-  const forecast = {
-    current: {
-      timezone: weatherData.timezone,
-      sunrise: weatherData.current.sunrise,
-      sunset: weatherData.current.sunset,
-    },
-    // Transform hourly data - dt is already ISO string, rename to time
-    hourly: weatherData.hourly.map(h => ({
-      time: h.dt, // Already ISO string from API
-      temp: h.temp,
-      feelsLike: h.feelsLike,
-      humidity: h.humidity,
-      pop: h.pop,
-      rain: h.rain,
-      snow: h.snow,
-      condition: h.condition,
-      description: h.description,
-      icon: h.icon,
-      windSpeed: h.windSpeed
-    })),
-    // Transform daily data - dt is already ISO string, rename fields
-    daily: weatherData.daily.map(d => ({
-      date: d.dt, // Already ISO string from API
-      tempHigh: d.tempMax,
-      tempLow: d.tempMin,
-      humidity: d.humidity,
-      pop: d.pop,
-      rain: d.rain,
-      snow: d.snow,
-      condition: d.condition,
-      description: d.description,
-      icon: d.icon,
-      uvi: d.uvi,
-      sunrise: d.sunrise,
-      sunset: d.sunset,
-      moonrise: d.moonrise,
-      moonset: d.moonset,
-      moonPhase: d.moonPhase
-    })),
-    alerts: weatherData.alerts || [],
-    location: { lat: location.latitude, lon: location.longitude }
-  };
-
   return (
-    <div className="min-h-screen bg-dark-bg">
-      {/* Top Navigation */}
-      <div className="sticky top-0 z-10 bg-dark-surface/95 backdrop-blur-sm border-b border-dark-border">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            {/* Back Button & Breadcrumb */}
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => navigate('/')}
-                className="p-2 hover:bg-dark-elevated rounded-lg transition-colors"
-                title="Back to locations"
-              >
-                <ArrowLeft className="w-5 h-5 text-gray-400" />
-              </button>
-              <div>
-                <div className="flex items-center gap-2 text-sm text-gray-400 mb-1">
-                  <span>Locations</span>
-                  <span>/</span>
-                  <span className="text-white">{location.locationName}</span>
-                </div>
-                <div className="flex items-center gap-4">
-                  <h1 className="text-2xl font-bold text-white">
-                    {location.locationName}, {location.country}
-                  </h1>
-                  <div className="flex items-center gap-2 px-3 py-1 bg-dark-elevated rounded-lg border border-dark-border">
-                    <span className="text-gray-400 text-sm">🕐</span>
-                    <span className="text-white font-mono text-lg">
-                      {new Date().toLocaleTimeString('en-US', { 
-                        hour: '2-digit', 
-                        minute: '2-digit',
-                        hour12: false,
-                        timeZone: forecast?.current?.timezone || 'UTC'
-                      })}
-                    </span>
-                    <span className="text-gray-500 text-xs">
-                      {new Date().toLocaleDateString('en-US', { 
-                        weekday: 'short',
-                        day: 'numeric',
-                        month: 'short',
-                        timeZone: forecast?.current?.timezone || 'UTC'
-                      })}
-                    </span>
-                  </div>
-                </div>
-              </div>
+    <div className="space-y-4">
+      {/* Location header bar */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-3">
+          <Link
+            to="/locations"
+            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Link>
+          <div>
+            <div className="flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-cyan-400" />
+              <h2 className="text-lg font-semibold text-white">
+                {location.locationName}, {location.country}
+              </h2>
             </div>
-
-            {/* Actions */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 mt-0.5">
+              <span className="text-slate-500 text-xs flex items-center gap-1">
+                <Clock className="w-3 h-3" />
+                {new Date().toLocaleTimeString('en-IE', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  hour12: false,
+                  timeZone: forecast?.current?.timezone || 'UTC',
+                })}
+                {' '}
+                {new Date().toLocaleDateString('en-IE', {
+                  weekday: 'short',
+                  day: 'numeric',
+                  month: 'short',
+                  timeZone: forecast?.current?.timezone || 'UTC',
+                })}
+              </span>
               {lastUpdated && (
-                <span className="text-xs text-gray-500">
+                <span className="text-slate-600 text-xs">
                   Updated {Math.round((Date.now() - lastUpdated.getTime()) / 60000)} min ago
                 </span>
               )}
-              <button
-                onClick={() => loadDashboard(true)}
-                disabled={refreshing}
-                className="px-4 py-2 bg-dark-elevated text-gray-300 rounded-lg 
-                         hover:bg-dark-border transition-colors text-sm font-medium
-                         disabled:opacity-50"
-              >
-                {refreshing ? 'Refreshing...' : 'Refresh'}
-              </button>
             </div>
           </div>
         </div>
+
+        <div className="flex items-center gap-2">
+          {/* Customize / Done button */}
+          <button
+            onClick={() => {
+              if (isEditing) {
+                setIsEditing(false);
+                setCatalogOpen(false);
+              } else {
+                setIsEditing(true);
+              }
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
+              isEditing
+                ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            {isEditing ? (
+              <>
+                <Check className="w-3.5 h-3.5" />
+                Done
+              </>
+            ) : (
+              <>
+                <Settings2 className="w-3.5 h-3.5" />
+                Customize
+              </>
+            )}
+          </button>
+
+          {/* Add widgets button (visible in edit mode) */}
+          {isEditing && (
+            <button
+              onClick={() => setCatalogOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 border border-cyan-500/20 transition-colors"
+            >
+              + Add Widgets
+            </button>
+          )}
+
+          {/* Refresh button */}
+          <button
+            onClick={() => loadDashboard(true)}
+            disabled={refreshing}
+            className="text-slate-400 hover:text-white p-2 rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
       </div>
 
-      {/* Main Dashboard Content */}
-      <div className="max-w-[1920px] mx-auto px-6 py-6">
-        {/* Weather Alerts - Show if any active */}
-        {forecast?.alerts && forecast.alerts.length > 0 && (
-          <WeatherAlertBanner 
-            alerts={forecast.alerts} 
-            timezone={forecast?.current?.timezone}
-          />
+      {/* Empty state */}
+      {enabledWidgets.length === 0 && (
+        <div className="flex flex-col items-center justify-center min-h-[40vh] text-center">
+          <Cloud className="w-12 h-12 text-slate-600 mb-4" />
+          <h3 className="text-lg font-semibold text-white mb-2">Your dashboard is empty</h3>
+          <p className="text-slate-400 text-sm mb-4">Add widgets to customize your dashboard</p>
+          <button
+            onClick={() => { setIsEditing(true); setCatalogOpen(true); }}
+            className="px-4 py-2 bg-cyan-500/20 text-cyan-400 rounded-lg hover:bg-cyan-500/30 transition-colors text-sm"
+          >
+            + Add Widgets
+          </button>
+        </div>
+      )}
+
+      {/* Widget Grid */}
+      <div ref={gridContainerRef}>
+        {enabledWidgets.length > 0 && layouts && containerWidth > 0 && (
+          <ResponsiveGridLayout
+            className="dashboard-grid"
+            width={containerWidth}
+            layouts={layouts}
+            breakpoints={GRID_CONFIG.breakpoints}
+            cols={GRID_CONFIG.cols}
+            rowHeight={GRID_CONFIG.rowHeight}
+            margin={GRID_CONFIG.margin}
+            draggableHandle=".widget-drag-handle"
+            isDraggable={isEditing}
+            isResizable={isEditing}
+            onLayoutChange={handleLayoutChange}
+            useCSSTransforms={true}
+            compactType="vertical"
+          >
+            {enabledWidgets.map(widgetId => {
+              const config = WIDGET_REGISTRY[widgetId];
+              if (!config) return null;
+
+              const WidgetComponent = config.component;
+              const widgetProps = getWidgetProps(widgetId);
+              const isScoreWidget = config.dataRequirements.includes('scores');
+              const scoreLoading = isScoreWidget && !scoreData[config.scoreEndpoint];
+
+              return (
+                <div
+                  key={widgetId}
+                  data-grid={{
+                    minW: config.minSize.w,
+                    minH: config.minSize.h,
+                    maxW: config.maxSize.w,
+                    maxH: config.maxSize.h,
+                  }}
+                >
+                  <WidgetWrapper
+                    id={widgetId}
+                    title={config.name}
+                    icon={config.icon}
+                    isEditing={isEditing}
+                    onRemove={removeWidget}
+                    loading={scoreLoading}
+                  >
+                    <WidgetComponent {...widgetProps} />
+                  </WidgetWrapper>
+                </div>
+              );
+            })}
+          </ResponsiveGridLayout>
         )}
-
-        {/* QuickStats Bar - Pass forecast for UV Index */}
-        <QuickStatsBar weather={weather} forecast={forecast} />
-
-        {/* Weather Map + Wind Analysis - Side by Side */}
-        <div className="grid grid-cols-1 xl:grid-cols-4 gap-4 mb-4">
-          {/* Weather Map - Takes 3 columns */}
-          <div className="xl:col-span-3">
-            <WeatherMapWidget 
-              lat={location.latitude} 
-              lon={location.longitude}
-              locationName={location.locationName}
-            />
-          </div>
-          
-          {/* Wind Analysis - Takes 1 column */}
-          <div className="xl:col-span-1">
-            <WindAnalysis wind={weather.wind}
-            lat={location.latitude}
-            lon={location.longitude} />
-          </div>
-        </div>
-
-        {/* Forecast Charts - Full Width */}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-4">
-          {/* 24-Hour Forecast - First Position */}
-          <HourlyForecast forecast={forecast} />
-
-          {/* 7-Day Temperature Forecast - Second Position */}
-          <TemperatureForecast forecast={forecast} />
-        </div>
-
-        {/* Bottom Row: Air Quality + Sun + Moon */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Air Quality - Compact Summary */}
-          <AirQualityBreakdown airQuality={weather.airQuality} compact={true} />
-
-          {/* Sun Widget */}
-          <SunWidget forecast={forecast} />
-          
-          {/* Moon Widget */}
-          <MoonWidget forecast={forecast} />
-        </div>
       </div>
+      )}
+
+      {/* Widget Catalog Drawer */}
+      {catalogOpen && (
+        <WidgetCatalog
+          enabledWidgets={enabledWidgets}
+          onAddWidget={addWidget}
+          onRemoveWidget={removeWidget}
+          onReset={resetLayout}
+          onClose={() => setCatalogOpen(false)}
+        />
+      )}
     </div>
   );
 };

@@ -16,8 +16,8 @@ import { Clock, Cloud, Sun, CloudRain, CloudSnow } from 'lucide-react';
 const HourlyForecast = ({ forecast, compact = false }) => {
   if (!forecast || !forecast.hourly) {
     return (
-      <div className="bg-dark-surface border border-dark-border rounded-xl p-6">
-        <p className="text-gray-400">Hourly forecast unavailable</p>
+      <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+        <p className="text-slate-400">Hourly forecast unavailable</p>
       </div>
     );
   }
@@ -62,14 +62,14 @@ const HourlyForecast = ({ forecast, compact = false }) => {
       case 'clear':
         return <Sun className={`${iconClass} text-accent-orange`} />;
       case 'clouds':
-        return <Cloud className={`${iconClass} text-gray-400`} />;
+        return <Cloud className={`${iconClass} text-slate-400`} />;
       case 'rain':
       case 'drizzle':
         return <CloudRain className={`${iconClass} text-blue-400`} />;
       case 'snow':
         return <CloudSnow className={`${iconClass} text-blue-200`} />;
       default:
-        return <Cloud className={`${iconClass} text-gray-400`} />;
+        return <Cloud className={`${iconClass} text-slate-400`} />;
     }
   };
 
@@ -97,7 +97,7 @@ const HourlyForecast = ({ forecast, compact = false }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
-        <div className="bg-dark-elevated border border-dark-border rounded-lg p-3 shadow-lg">
+        <div className="bg-slate-800 border border-slate-800 rounded-lg p-3 shadow-lg">
           <p className="text-white font-semibold mb-2">{data.time}</p>
           <div className="space-y-1 text-sm">
             <div className="flex items-center justify-between gap-4">
@@ -105,7 +105,7 @@ const HourlyForecast = ({ forecast, compact = false }) => {
               <span className="text-white font-mono">{data.temp}°C</span>
             </div>
             <div className="flex items-center justify-between gap-4">
-              <span className="text-gray-400">Feels like:</span>
+              <span className="text-slate-400">Feels like:</span>
               <span className="text-white font-mono">{data.feelsLike}°C</span>
             </div>
             <div className="flex items-center justify-between gap-4">
@@ -119,7 +119,7 @@ const HourlyForecast = ({ forecast, compact = false }) => {
               </div>
             )}
             <div className="flex items-center justify-between gap-4">
-              <span className="text-gray-400">Wind:</span>
+              <span className="text-slate-400">Wind:</span>
               <span className="text-white font-mono">{data.windSpeed} km/h</span>
             </div>
           </div>
@@ -146,20 +146,20 @@ const HourlyForecast = ({ forecast, compact = false }) => {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.3 }}
-      className="bg-dark-surface border border-dark-border rounded-xl overflow-hidden"
+      className="bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden"
     >
       {/* Header */}
-      <div className="px-6 py-4 border-b border-dark-border">
+      <div className="px-6 py-4 border-b border-slate-800">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-              <Clock className="w-5 h-5 text-primary" />
+              <Clock className="w-5 h-5 text-cyan-500" />
               24-Hour Forecast
             </h3>
-            <p className="text-sm text-gray-400 mt-1">Hourly breakdown</p>
+            <p className="text-sm text-slate-400 mt-1">Hourly breakdown</p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-gray-400">Range</p>
+            <p className="text-xs text-slate-400">Range</p>
             <p className="text-sm font-semibold text-white">
               {minTemp}° - {maxTemp}°C
             </p>
@@ -244,15 +244,15 @@ const HourlyForecast = ({ forecast, compact = false }) => {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.05 * index }}
-                className="bg-dark-elevated border border-dark-border rounded-lg p-3 text-center"
+                className="bg-slate-800 border border-slate-800 rounded-lg p-3 text-center"
               >
-                <p className="text-xs text-gray-400 mb-2">{hour.time}</p>
+                <p className="text-xs text-slate-400 mb-2">{hour.time}</p>
                 <div className="flex justify-center mb-2 text-lg">
                   {getWeatherEmoji(hour.condition)}
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-bold text-accent-orange">{hour.temp}°</p>
-                  <p className="text-xs text-gray-500">Feels {hour.feelsLike}°</p>
+                  <p className="text-xs text-slate-500">Feels {hour.feelsLike}°</p>
                 </div>
                 {(hour.rain > 0 || hour.snow > 0 || hour.pop > 30) && (
                   <div className="mt-1">
@@ -267,14 +267,14 @@ const HourlyForecast = ({ forecast, compact = false }) => {
                       </p>
                     )}
                     {hour.rain === 0 && hour.snow === 0 && hour.pop > 30 && (
-                      <p className="text-xs text-gray-400">
+                      <p className="text-xs text-slate-400">
                         {hour.pop}% chance
                       </p>
                     )}
                   </div>
                 )}
                 {hour.windSpeed > 20 && (
-                  <p className="text-xs text-gray-400 mt-1">
+                  <p className="text-xs text-slate-400 mt-1">
                     💨 {hour.windSpeed}
                   </p>
                 )}

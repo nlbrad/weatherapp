@@ -17,8 +17,8 @@ import { Calendar } from 'lucide-react';
 const TemperatureForecast = ({ forecast, compact = false }) => {
   if (!forecast || !forecast.daily) {
     return (
-      <div className="bg-dark-surface border border-dark-border rounded-xl p-6">
-        <p className="text-gray-400">Forecast data unavailable</p>
+      <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+        <p className="text-slate-400">Forecast data unavailable</p>
       </div>
     );
   }
@@ -89,7 +89,7 @@ const TemperatureForecast = ({ forecast, compact = false }) => {
       const totalPrecip = data.rain + data.snow;
       
       return (
-        <div className="bg-dark-elevated border border-dark-border rounded-lg p-3 shadow-lg">
+        <div className="bg-slate-800 border border-slate-800 rounded-lg p-3 shadow-lg">
           <p className="text-white font-semibold mb-2">{data.fullDate}</p>
           <div className="space-y-1 text-sm">
             <div className="flex items-center justify-between gap-4">
@@ -101,7 +101,7 @@ const TemperatureForecast = ({ forecast, compact = false }) => {
               <span className="text-white font-mono">{data.low}°C</span>
             </div>
             <div className="flex items-center justify-between gap-4">
-              <span className="text-gray-400">Rain Chance:</span>
+              <span className="text-slate-400">Rain Chance:</span>
               <span className="text-white font-mono">{data.pop}%</span>
             </div>
             {totalPrecip > 0 && (
@@ -111,7 +111,7 @@ const TemperatureForecast = ({ forecast, compact = false }) => {
               </div>
             )}
             <div className="flex items-center justify-between gap-4">
-              <span className="text-gray-400">Humidity:</span>
+              <span className="text-slate-400">Humidity:</span>
               <span className="text-white font-mono">{data.humidity}%</span>
             </div>
           </div>
@@ -136,20 +136,20 @@ const TemperatureForecast = ({ forecast, compact = false }) => {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.4 }}
-      className="bg-dark-surface border border-dark-border rounded-xl overflow-hidden"
+      className="bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden"
     >
       {/* Header */}
-      <div className="px-6 py-4 border-b border-dark-border">
+      <div className="px-6 py-4 border-b border-slate-800">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-primary" />
+              <Calendar className="w-5 h-5 text-cyan-500" />
               7-Day Forecast
             </h3>
-            <p className="text-sm text-gray-400 mt-1">Weekly outlook</p>
+            <p className="text-sm text-slate-400 mt-1">Weekly outlook</p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-gray-400">Range</p>
+            <p className="text-xs text-slate-400">Range</p>
             <p className="text-sm font-semibold text-white">
               {minTemp}° - {maxTemp}°C
             </p>
@@ -215,9 +215,9 @@ const TemperatureForecast = ({ forecast, compact = false }) => {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 * index }}
-              className="bg-dark-elevated border border-dark-border rounded-lg p-3 text-center"
+              className="bg-slate-800 border border-slate-800 rounded-lg p-3 text-center"
             >
-              <p className="text-xs text-gray-400 mb-2">{day.date}</p>
+              <p className="text-xs text-slate-400 mb-2">{day.date}</p>
               <div className="flex justify-center mb-2 text-lg">
                 {getWeatherEmoji(day.condition)}
               </div>
@@ -238,7 +238,7 @@ const TemperatureForecast = ({ forecast, compact = false }) => {
                     </p>
                   )}
                   {day.rain === 0 && day.snow === 0 && day.pop > 30 && (
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-slate-400">
                       {day.pop}% rain
                     </p>
                   )}

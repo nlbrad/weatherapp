@@ -12,7 +12,7 @@
 import React, { useState } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { 
-  Bell, MapPin, BarChart3, Settings, Menu, X, 
+  Bell, MapPin, Settings, Menu, X,
   User, LogOut, ChevronLeft, ChevronRight, Plus
 } from 'lucide-react';
 import { useAuth } from '../../auth';
@@ -36,15 +36,7 @@ const NAV_ITEMS = [
     label: 'Locations',
     description: 'Alert locations',
   },
-  { 
-    id: 'dashboard', 
-    path: '/dashboard', 
-    icon: BarChart3, 
-    label: 'Dashboard',
-    description: 'Weather details',
-    extra: true, // Mark as "bonus" feature
-  },
-  { 
+{ 
     id: 'preferences', 
     path: '/preferences', 
     icon: Settings, 
@@ -90,9 +82,10 @@ const AppLayout = ({ children }) => {
       <NavLink
         to={item.path}
         onClick={() => setMobileMenuOpen(false)}
+        aria-current={isActive ? 'page' : undefined}
         className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group ${
-          isActive 
-            ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/30' 
+          isActive
+            ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/30'
             : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent'
         }`}
       >
@@ -113,6 +106,14 @@ const AppLayout = ({ children }) => {
 
   return (
     <div className="min-h-screen bg-slate-950 flex">
+      {/* Skip Navigation Link */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:top-4 focus:left-4 focus:bg-cyan-500 focus:text-white focus:px-4 focus:py-2 focus:rounded-lg focus:text-sm focus:font-medium"
+      >
+        Skip to main content
+      </a>
+
       {/* Desktop Sidebar */}
       <aside 
         className={`hidden md:flex flex-col bg-slate-900/50 border-r border-slate-800 transition-all duration-300 z-50 ${
@@ -286,8 +287,11 @@ const AppLayout = ({ children }) => {
             {/* Header Actions */}
             <div className="flex items-center gap-2">
               {location.pathname === '/' && (
-                <button 
-                  onClick={() => navigate('/alerts/new')}
+                <button
+                  onClick={() => {
+                    const el = document.getElementById('your-alerts');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }}
                   className="flex items-center gap-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-all shadow-lg shadow-cyan-500/20"
                 >
                   <Plus className="w-4 h-4" />
@@ -308,7 +312,7 @@ const AppLayout = ({ children }) => {
         </header>
 
         {/* Page Content */}
-        <div className="flex-1 overflow-auto p-4 md:p-6">
+        <div id="main-content" className="flex-1 overflow-auto p-4 md:p-6">
           {children}
         </div>
       </main>

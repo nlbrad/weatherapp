@@ -332,7 +332,7 @@ async function checkAndSendAuroraAlerts(context, force = false) {
             }
             
             const chatId = user.telegramChatId || prefs.telegramChatId;
-            const threshold = prefs.auroraAlertsThreshold || DEFAULT_AURORA_THRESHOLD;
+            const threshold = prefs.auroraAlertsThreshold || prefs.auroraThreshold || DEFAULT_AURORA_THRESHOLD;
             
             if (!chatId) {
                 results.skipped++;
@@ -451,28 +451,12 @@ async function fetchWeatherData(lat, lon, context) {
 }
 
 // ============================================
-// Telegram
+// Telegram (shared utility)
 // ============================================
+const { sendTelegramMessage: _sendTelegram } = require('../utils/telegramHelper');
 async function sendTelegramMessage(chatId, message) {
-    const token = process.env.TELEGRAM_BOT_TOKEN;
-    if (!token) return false;
-    
-    try {
-        const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                chat_id: chatId,
-                text: message,
-                parse_mode: 'Markdown'
-            })
-        });
-        const result = await response.json();
-        return result.ok === true;
-    } catch (error) {
-        console.error('Telegram error:', error.message);
-        return false;
-    }
+    const result = await _sendTelegram(chatId, message);
+    return result.ok === true;
 }
 
 module.exports = {

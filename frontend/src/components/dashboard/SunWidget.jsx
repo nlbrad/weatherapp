@@ -16,8 +16,8 @@ import { Sunrise, Sunset, Sun, Clock } from 'lucide-react';
 const SunWidget = ({ forecast }) => {
   if (!forecast || !forecast.current || !forecast.daily?.[0]) {
     return (
-      <div className="bg-dark-surface border border-dark-border rounded-xl p-6">
-        <p className="text-gray-400">Sun data unavailable</p>
+      <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+        <p className="text-slate-400">Sun data unavailable</p>
       </div>
     );
   }
@@ -75,17 +75,17 @@ const SunWidget = ({ forecast }) => {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.6 }}
-      className="bg-dark-surface border border-dark-border rounded-xl overflow-hidden"
+      className="bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden"
     >
       {/* Header */}
-      <div className="px-6 py-4 border-b border-dark-border">
+      <div className="px-6 py-4 border-b border-slate-800">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-lg font-semibold text-white flex items-center gap-2">
               <Sun className="w-5 h-5 text-accent-orange" />
               Sun
             </h3>
-            <p className="text-sm text-gray-400 mt-1">
+            <p className="text-sm text-slate-400 mt-1">
               Daylight hours and position
             </p>
           </div>
@@ -196,41 +196,41 @@ const SunWidget = ({ forecast }) => {
 
         {/* Sun times grid */}
         <div className="grid grid-cols-4 gap-3">
-          <div className="bg-dark-elevated border border-dark-border rounded-lg p-3 text-center">
+          <div className="bg-slate-800 border border-slate-800 rounded-lg p-3 text-center">
             <div className="flex items-center justify-center gap-1 mb-1">
               <Sunrise className="w-4 h-4 text-accent-orange" />
             </div>
-            <p className="text-xs text-gray-400 mb-1">Sunrise</p>
+            <p className="text-xs text-slate-400 mb-1">Sunrise</p>
             <p className="text-lg font-bold text-white font-mono">
               {formatTimeInZone(sunrise)}
             </p>
           </div>
 
-          <div className="bg-dark-elevated border border-dark-border rounded-lg p-3 text-center">
+          <div className="bg-slate-800 border border-slate-800 rounded-lg p-3 text-center">
             <div className="flex items-center justify-center gap-1 mb-1">
               <Sun className="w-4 h-4 text-yellow-400" />
             </div>
-            <p className="text-xs text-gray-400 mb-1">Solar Noon</p>
+            <p className="text-xs text-slate-400 mb-1">Solar Noon</p>
             <p className="text-lg font-bold text-white font-mono">
               {formatTimeInZone(solarNoon)}
             </p>
           </div>
 
-          <div className="bg-dark-elevated border border-dark-border rounded-lg p-3 text-center">
+          <div className="bg-slate-800 border border-slate-800 rounded-lg p-3 text-center">
             <div className="flex items-center justify-center gap-1 mb-1">
               <Sunset className="w-4 h-4 text-accent-orange" />
             </div>
-            <p className="text-xs text-gray-400 mb-1">Sunset</p>
+            <p className="text-xs text-slate-400 mb-1">Sunset</p>
             <p className="text-lg font-bold text-white font-mono">
               {formatTimeInZone(sunset)}
             </p>
           </div>
 
-          <div className="bg-dark-elevated border border-dark-border rounded-lg p-3 text-center">
+          <div className="bg-slate-800 border border-slate-800 rounded-lg p-3 text-center">
             <div className="flex items-center justify-center gap-1 mb-1">
               <Clock className="w-4 h-4 text-accent-green" />
             </div>
-            <p className="text-xs text-gray-400 mb-1">Daylight</p>
+            <p className="text-xs text-slate-400 mb-1">Daylight</p>
             <p className="text-lg font-bold text-white font-mono">
               {dayLengthHours}h {dayLengthMinutes}m
             </p>
@@ -238,14 +238,14 @@ const SunWidget = ({ forecast }) => {
         </div>
 
         {/* Additional info */}
-        <div className="mt-4 pt-4 border-t border-dark-border">
+        <div className="mt-4 pt-4 border-t border-slate-800">
           <div className="flex items-center justify-between text-sm">
-            <div className="text-gray-400">
-              <span className="text-gray-500">Night length:</span>{' '}
+            <div className="text-slate-400">
+              <span className="text-slate-500">Night length:</span>{' '}
               <span className="text-white font-mono">{nightLengthHours}h {nightLengthMinutes}m</span>
             </div>
-            <div className="text-gray-400">
-              <span className="text-gray-500">Golden hour:</span>{' '}
+            <div className="text-slate-400">
+              <span className="text-slate-500">Golden hour:</span>{' '}
               <span className="text-amber-400 font-mono">
                 {formatTimeInZone(sunrise)}-{formatTimeInZone(goldenMorningEnd)}, {formatTimeInZone(goldenEveningStart)}-{formatTimeInZone(sunset)}
               </span>

@@ -96,7 +96,7 @@ const WindAnalysis = ({ wind, lat, lon, className = '' }) => {
 
   return (
     <motion.div 
-      className={`bg-dark-surface border border-dark-border rounded-xl p-4 h-full ${className}`}
+      className={`bg-slate-900/50 border border-slate-800 rounded-2xl p-4 h-full ${className}`}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
@@ -104,12 +104,12 @@ const WindAnalysis = ({ wind, lat, lon, className = '' }) => {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center space-x-2">
-          <div className="p-2 bg-dark-elevated rounded-lg">
+          <div className="p-2 bg-slate-800 rounded-lg">
             <Wind className="w-4 h-4 text-cyan-400" />
           </div>
           <div>
             <h3 className="text-sm font-semibold text-white">Wind Analysis</h3>
-            <p className="text-xs text-gray-400">{windCondition.text}</p>
+            <p className="text-xs text-slate-400">{windCondition.text}</p>
           </div>
         </div>
         
@@ -232,13 +232,13 @@ const WindAnalysis = ({ wind, lat, lon, className = '' }) => {
           <div className="h-0.5 w-full mt-1 rounded-full bg-gradient-to-r from-green-500 via-cyan-500 to-blue-500" />
           <div className="mt-2 space-y-0.5">
             <p className="text-lg font-bold font-mono text-white">
-              {speed.toFixed(1)} <span className="text-sm text-gray-400">km/h</span>
+              {speed.toFixed(1)} <span className="text-sm text-slate-400">km/h</span>
             </p>
             <p className="text-xs">
               <span className="font-bold text-cyan-400">
                 {getCompassDirection(direction)}
               </span>
-              <span className="text-gray-500 ml-1">
+              <span className="text-slate-500 ml-1">
                 ({direction}°)
               </span>
             </p>
@@ -247,20 +247,20 @@ const WindAnalysis = ({ wind, lat, lon, className = '' }) => {
       </div>
 
       {/* Speed vs Gust Comparison */}
-      <div className="bg-dark-elevated rounded-lg p-3 space-y-3">
+      <div className="bg-slate-800 rounded-lg p-3 space-y-3">
         <div className="flex justify-between items-center mb-2">
-          <span className="text-xs text-gray-400 font-medium">Speed vs Gusts</span>
+          <span className="text-xs text-slate-400 font-medium">Speed vs Gusts</span>
         </div>
         
         {/* Speed bar */}
         <div>
           <div className="flex justify-between items-center mb-1">
-            <span className="text-xs text-gray-400">Speed</span>
+            <span className="text-xs text-slate-400">Speed</span>
             <span className="text-xs font-mono font-semibold text-white">
               {speed.toFixed(1)} km/h
             </span>
           </div>
-          <div className="h-2 bg-dark-border rounded-full overflow-hidden">
+          <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
             <motion.div
               className="h-full rounded-full"
               style={{ backgroundColor: windColor }}
@@ -274,21 +274,21 @@ const WindAnalysis = ({ wind, lat, lon, className = '' }) => {
         {/* Gust bar - two states: has gust or holding steady */}
         <div>
           <div className="flex justify-between items-center mb-1">
-            <span className="text-xs text-gray-400">Gusts</span>
+            <span className="text-xs text-slate-400">Gusts</span>
             
             {hasGust ? (
               <span className="text-xs font-mono font-semibold" style={{ color: gustColor }}>
                 {gustSpeed.toFixed(1)} km/h
                 {hasSignificantGust && (
-                  <span className="text-gray-500 ml-1">(+{gustDifference}%)</span>
+                  <span className="text-slate-500 ml-1">(+{gustDifference}%)</span>
                 )}
               </span>
             ) : (
-              <span className="text-xs text-gray-500 italic">Holding steady</span>
+              <span className="text-xs text-slate-500 italic">Holding steady</span>
             )}
           </div>
           
-          <div className="h-2 bg-dark-border rounded-full overflow-hidden">
+          <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
             {hasGust ? (
               <motion.div
                 className="h-full rounded-full"
@@ -323,7 +323,7 @@ const WindAnalysis = ({ wind, lat, lon, className = '' }) => {
 
       {/* Beaufort Scale indicator */}
       <div className="mt-3 flex items-center justify-between text-xs">
-        <span className="text-gray-500">Beaufort Scale</span>
+        <span className="text-slate-500">Beaufort Scale</span>
         <span className="font-semibold" style={{ color: windColor }}>
           {windCondition.level} - {windCondition.text}
         </span>

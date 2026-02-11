@@ -204,15 +204,18 @@ const PreferencesPage = () => {
         <div className="flex items-center justify-between mb-4">
           <span className="text-white">Enable Telegram</span>
           <button
+            role="switch"
+            aria-checked={preferences.telegramEnabled}
+            aria-label="Enable Telegram notifications"
             onClick={() => updatePref('telegramEnabled', !preferences.telegramEnabled)}
             className={`w-12 h-7 rounded-full transition-colors relative ${
               preferences.telegramEnabled ? 'bg-cyan-500' : 'bg-slate-700'
             }`}
           >
-            <span 
+            <span
               className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-all shadow-sm ${
                 preferences.telegramEnabled ? 'left-6' : 'left-1'
-              }`} 
+              }`}
             />
           </button>
         </div>
@@ -321,15 +324,18 @@ const PreferencesPage = () => {
             <span className="text-white">Enable Quiet Hours</span>
           </div>
           <button
+            role="switch"
+            aria-checked={preferences.quietHoursEnabled}
+            aria-label="Enable quiet hours"
             onClick={() => updatePref('quietHoursEnabled', !preferences.quietHoursEnabled)}
             className={`w-12 h-7 rounded-full transition-colors relative ${
               preferences.quietHoursEnabled ? 'bg-purple-500' : 'bg-slate-700'
             }`}
           >
-            <span 
+            <span
               className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-all shadow-sm ${
                 preferences.quietHoursEnabled ? 'left-6' : 'left-1'
-              }`} 
+              }`}
             />
           </button>
         </div>

@@ -196,9 +196,41 @@ export const preferencesAPI = {
   }
 };
 
+// Scores API - Aurora, sky, outdoor, swimming score endpoints
+export const scoresAPI = {
+  getAuroraScore: async (lat, lon) => {
+    const url = `${API_BASE_URL}/aurora-score?lat=${lat}&lon=${lon}&windows=true`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Failed to fetch aurora score');
+    return response.json();
+  },
+
+  getSkyScore: async (lat, lon) => {
+    const url = `${API_BASE_URL}/tonights-sky?lat=${lat}&lon=${lon}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Failed to fetch sky score');
+    return response.json();
+  },
+
+  getOutdoorScore: async (lat, lon, activity = 'default') => {
+    const url = `${API_BASE_URL}/outdoor-score?lat=${lat}&lon=${lon}&activity=${encodeURIComponent(activity)}&windows=true`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Failed to fetch outdoor score');
+    return response.json();
+  },
+
+  getSwimmingScore: async (lat, lon) => {
+    const url = `${API_BASE_URL}/swimming-score?lat=${lat}&lon=${lon}&windows=true`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Failed to fetch swimming score');
+    return response.json();
+  },
+};
+
 export default {
   weatherAPI,
   locationsAPI,
   alertsAPI,
-  preferencesAPI
+  preferencesAPI,
+  scoresAPI,
 };

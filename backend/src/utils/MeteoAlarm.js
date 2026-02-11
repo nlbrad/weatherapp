@@ -251,9 +251,9 @@ async function getWarningsForCounty(county) {
     
     const countyLower = county.toLowerCase();
     
-    return warnings.filter(w => 
-        w.isNationwide || 
-        w.regions.some(r => r.toLowerCase().includes(countyLower))
+    return warnings.filter(w =>
+        w.isNationwide ||
+        w.regionsText.toLowerCase().includes(countyLower)
     );
 }
 

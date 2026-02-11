@@ -25,7 +25,7 @@ const MetricsGrid = ({ weather }) => {
     if (visibility >= 10) return { label: 'Clear', color: 'text-accent-green' };
     if (visibility >= 5) return { label: 'Good', color: 'text-blue-400' };
     if (visibility >= 2) return { label: 'Hazy', color: 'text-accent-orange' };
-    return { label: 'Foggy', color: 'text-gray-400' };
+    return { label: 'Foggy', color: 'text-slate-400' };
   };
 
   const pressureStatus = getPressureStatus(weather.pressure);
@@ -44,7 +44,7 @@ const MetricsGrid = ({ weather }) => {
       subValue: pressureStatus.label,
       subColor: pressureStatus.color,
       icon: Gauge,
-      iconColor: 'text-primary',
+      iconColor: 'text-cyan-500',
       trend: pressureStatus.trend
     },
     {
@@ -63,7 +63,7 @@ const MetricsGrid = ({ weather }) => {
       value: `${weather.tempMin.toFixed(0)}° - ${weather.tempMax.toFixed(0)}°`,
       unit: '',
       subValue: `${(weather.tempMax - weather.tempMin).toFixed(1)}° variation`,
-      subColor: 'text-gray-400',
+      subColor: 'text-slate-400',
       icon: Thermometer,
       iconColor: 'text-accent-orange'
     },
@@ -84,7 +84,7 @@ const MetricsGrid = ({ weather }) => {
       {/* Section Header */}
       <div className="mb-4">
         <h3 className="text-lg font-semibold text-white">Additional Metrics</h3>
-        <p className="text-sm text-gray-400">Detailed weather information</p>
+        <p className="text-sm text-slate-400">Detailed weather information</p>
       </div>
 
       {/* Metrics Grid */}
@@ -97,16 +97,16 @@ const MetricsGrid = ({ weather }) => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 * index }}
-              className="bg-dark-surface border border-dark-border rounded-xl p-4 
+              className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 
                        hover:border-primary/30 transition-all duration-300"
             >
               {/* Icon */}
               <div className="flex items-start justify-between mb-3">
-                <div className={`p-2 bg-dark-elevated rounded-lg ${metric.iconColor}`}>
+                <div className={`p-2 bg-slate-800 rounded-lg ${metric.iconColor}`}>
                   <Icon className="w-5 h-5" />
                 </div>
                 {metric.trend && (
-                  <span className="text-2xl text-gray-500">{metric.trend}</span>
+                  <span className="text-2xl text-slate-500">{metric.trend}</span>
                 )}
               </div>
 
@@ -115,13 +115,13 @@ const MetricsGrid = ({ weather }) => {
                 <p className="text-2xl font-bold font-mono text-white">
                   {metric.value}
                   {metric.unit && (
-                    <span className="text-sm text-gray-400 ml-1">{metric.unit}</span>
+                    <span className="text-sm text-slate-400 ml-1">{metric.unit}</span>
                   )}
                 </p>
               </div>
 
               {/* Label */}
-              <p className="text-xs text-gray-400 mb-1">{metric.label}</p>
+              <p className="text-xs text-slate-400 mb-1">{metric.label}</p>
 
               {/* Sub Value */}
               <p className={`text-xs font-medium ${metric.subColor}`}>
@@ -137,29 +137,29 @@ const MetricsGrid = ({ weather }) => {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.5 }}
-        className="mt-4 bg-dark-surface border border-dark-border rounded-xl p-4"
+        className="mt-4 bg-slate-900/50 border border-slate-800 rounded-2xl p-4"
       >
         <div className="flex items-start gap-3">
-          <Cloud className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+          <Cloud className="w-5 h-5 text-cyan-500 flex-shrink-0 mt-0.5" />
           <div className="flex-1">
-            <p className="text-sm text-gray-300 mb-2">
+            <p className="text-sm text-slate-300 mb-2">
               <span className="font-semibold text-white">Current Conditions:</span> {weather.description}
             </p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs text-gray-400">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs text-slate-400">
               <div>
-                <span className="text-gray-500">Humidity:</span> 
+                <span className="text-slate-500">Humidity:</span> 
                 <span className="text-white ml-1">{weather.humidity}%</span>
               </div>
               <div>
-                <span className="text-gray-500">Pressure:</span> 
+                <span className="text-slate-500">Pressure:</span> 
                 <span className="text-white ml-1">{weather.pressure} hPa</span>
               </div>
               <div>
-                <span className="text-gray-500">Wind:</span> 
+                <span className="text-slate-500">Wind:</span> 
                 <span className="text-white ml-1">{weather.wind.speed} km/h</span>
               </div>
               <div>
-                <span className="text-gray-500">Visibility:</span> 
+                <span className="text-slate-500">Visibility:</span> 
                 <span className="text-white ml-1">{weather.visibility || 10} km</span>
               </div>
             </div>

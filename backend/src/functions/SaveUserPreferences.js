@@ -85,9 +85,12 @@ app.http('SaveUserPreferences', {
                     newsDigestTimes: preferences.newsDigestTimes || ['07:30', '18:00'],
                     cryptoDigestTimes: preferences.cryptoDigestTimes || ['08:00', '20:00'],  // NEW
                     
-                    // Thresholds
-                    stargazingThreshold: preferences.stargazingThreshold || 70,
-                    auroraThreshold: preferences.auroraThreshold || 50,
+                    // Thresholds (support both key formats: legacy and frontend alertType-based)
+                    stargazingThreshold: preferences.stargazingAlertsThreshold || preferences.stargazingThreshold || 70,
+                    auroraThreshold: preferences.auroraAlertsThreshold || preferences.auroraThreshold || 50,
+                    // Also persist frontend keys so they round-trip correctly
+                    stargazingAlertsThreshold: preferences.stargazingAlertsThreshold || preferences.stargazingThreshold || 70,
+                    auroraAlertsThreshold: preferences.auroraAlertsThreshold || preferences.auroraThreshold || 50,
                     
                     // Quiet hours
                     quietHoursEnabled: preferences.quietHoursEnabled || false,
