@@ -1,73 +1,69 @@
 /**
  * OutdoorScore Computation Module
- * 
+ *
  * Calculates a 0-100 score for general outdoor activities.
  * Use cases: Hiking, cycling, walking, picnics, outdoor sports
- * 
+ *
  * Key factors:
- * 1. Precipitation - rain/snow ruins most outdoor activities
- * 2. Temperature - comfort band matters
+ * 1. Precipitation - rain/snow ruins most outdoor activities (heaviest weight)
+ * 2. Temperature - uses feels-like as primary, with comfort band
  * 3. Wind - high winds are unpleasant/dangerous
- * 4. "Feels like" - wind chill or heat index
+ * 4. UV Index - for longer activities
+ * 5. Visibility - fog/mist
  */
 
 // =====================================================
 // SCORING WEIGHTS
 // =====================================================
 const WEIGHTS = {
-    // Precipitation is the biggest factor
+    // Precipitation is the biggest factor — active rain should tank the score
     precipitation: {
         weight: 35,
-        thresholds: [
+        // Probability-based penalty (when not actively raining)
+        probabilityThresholds: [
+            { max: 10, penalty: 0 },       // Dry
+            { max: 25, penalty: 0.15 },    // Slight chance
+            { max: 40, penalty: 0.35 },    // Possible
+            { max: 55, penalty: 0.55 },    // Likely
+            { max: 70, penalty: 0.75 },    // Very likely
+            { max: 85, penalty: 0.9 },     // Almost certain
+            { max: 100, penalty: 1.0 }     // Certain
+        ],
+        // Active rainfall intensity penalty (mm/h)
+        intensityThresholds: [
             { max: 0, penalty: 0 },        // No rain
-            { max: 10, penalty: 0.2 },     // Very light chance
-            { max: 30, penalty: 0.5 },     // Light rain possible
-            { max: 50, penalty: 0.7 },     // Moderate chance
-            { max: 70, penalty: 0.85 },    // Likely rain
-            { max: 100, penalty: 1.0 }     // Definitely raining
+            { max: 0.5, penalty: 0.6 },    // Drizzle
+            { max: 2, penalty: 0.8 },      // Light rain
+            { max: 5, penalty: 0.9 },      // Moderate rain
+            { max: 100, penalty: 1.0 }     // Heavy rain
         ]
     },
-    
-    // Temperature comfort (user configurable)
+
+    // Temperature comfort — scored on feels-like temperature
     temperature: {
-        weight: 25,
+        weight: 30,
         defaults: {
-            ideal: { min: 15, max: 22 },   // Perfect
-            comfortable: { min: 10, max: 25 },  // Good
-            tolerable: { min: 5, max: 30 },     // Okay
-            // Outside tolerable = significant penalty
+            ideal: { min: 14, max: 22 },       // Perfect range
+            comfortable: { min: 10, max: 26 },  // Good range
         }
     },
-    
-    // Wind makes everything worse
+
+    // Wind
     wind: {
         weight: 20,
         thresholds: [
-            { max: 10, penalty: 0 },       // Calm
-            { max: 20, penalty: 0.2 },     // Light breeze
-            { max: 30, penalty: 0.4 },     // Moderate
-            { max: 40, penalty: 0.65 },    // Strong
-            { max: 50, penalty: 0.85 },    // Very strong
+            { max: 12, penalty: 0 },       // Calm/light
+            { max: 20, penalty: 0.15 },    // Gentle breeze
+            { max: 30, penalty: 0.35 },    // Moderate
+            { max: 40, penalty: 0.6 },     // Strong
+            { max: 50, penalty: 0.8 },     // Very strong
             { max: 100, penalty: 1.0 }     // Dangerous
         ]
     },
-    
-    // Feels-like adjustment
-    feelsLike: {
-        weight: 10,
-        // Penalty based on difference from actual temp
-        getDifferencePenalty: (actual, feelsLike) => {
-            const diff = Math.abs(actual - feelsLike);
-            if (diff <= 2) return 0;
-            if (diff <= 5) return 0.3;
-            if (diff <= 8) return 0.6;
-            return 0.9;
-        }
-    },
-    
-    // UV Index (for longer activities)
+
+    // UV Index
     uvIndex: {
-        weight: 5,
+        weight: 10,
         thresholds: [
             { max: 2, penalty: 0 },        // Low
             { max: 5, penalty: 0.1 },      // Moderate
@@ -76,7 +72,7 @@ const WEIGHTS = {
             { max: 15, penalty: 1.0 }      // Extreme
         ]
     },
-    
+
     // Visibility
     visibility: {
         weight: 5,
@@ -96,42 +92,42 @@ const WEIGHTS = {
 const ACTIVITY_PROFILES = {
     hiking: {
         name: 'Hiking',
-        tempRange: { min: 5, max: 25 },
+        tempRange: { min: 6, max: 24 },
         windTolerance: 1.2,      // More tolerant of wind
         rainTolerance: 0.8,      // Less tolerant of rain
         uvSensitivity: 1.5       // More sun exposure
     },
     cycling: {
         name: 'Cycling',
-        tempRange: { min: 8, max: 28 },
+        tempRange: { min: 8, max: 26 },
         windTolerance: 0.7,      // Less tolerant (headwinds)
         rainTolerance: 0.6,      // Much less tolerant
         uvSensitivity: 1.2
     },
     walking: {
         name: 'Walking',
-        tempRange: { min: 5, max: 28 },
+        tempRange: { min: 6, max: 26 },
         windTolerance: 1.0,
         rainTolerance: 0.9,
         uvSensitivity: 1.0
     },
     running: {
         name: 'Running',
-        tempRange: { min: 3, max: 22 },   // Runners prefer cooler
+        tempRange: { min: 3, max: 20 },   // Runners prefer cooler
         windTolerance: 0.9,
         rainTolerance: 0.7,
         uvSensitivity: 1.3
     },
     picnic: {
         name: 'Picnic',
-        tempRange: { min: 15, max: 28 },
-        windTolerance: 0.7,      // Wind ruins picnics
+        tempRange: { min: 15, max: 27 },
+        windTolerance: 0.6,      // Wind ruins picnics
         rainTolerance: 0.3,      // Rain definitely ruins picnics
         uvSensitivity: 1.0
     },
     default: {
         name: 'General Outdoor',
-        tempRange: { min: 10, max: 25 },
+        tempRange: { min: 10, max: 24 },
         windTolerance: 1.0,
         rainTolerance: 1.0,
         uvSensitivity: 1.0
@@ -144,26 +140,26 @@ const ACTIVITY_PROFILES = {
 
 /**
  * Compute OutdoorScore for given conditions
- * 
+ *
  * @param {Object} conditions
  * @param {number} conditions.temperature - Current temp in °C
  * @param {number} conditions.feelsLike - Feels like temp in °C
  * @param {number} conditions.precipProbability - Precipitation probability 0-100
- * @param {number} conditions.precipAmount - Precipitation amount in mm
+ * @param {number} conditions.precipAmount - Precipitation amount in mm/h
  * @param {number} conditions.windSpeed - Wind speed in km/h
  * @param {number} conditions.humidity - Humidity 0-100%
  * @param {number} conditions.uvIndex - UV index 0-11+
  * @param {number} conditions.visibility - Visibility in meters
- * @param {string} conditions.weatherCondition - e.g., 'clear', 'rain', 'snow'
+ * @param {string} conditions.weatherCondition - e.g., 'clear', 'light rain', 'heavy rain'
  * @param {string} [activity='default'] - Activity type
  * @param {Object} [userPrefs] - User preferences for temp ranges
- * 
+ *
  * @returns {Object} Score result with breakdown
  */
 function computeOutdoorScore(conditions, activity = 'default', userPrefs = {}) {
     const {
         temperature = 15,
-        feelsLike = 15,
+        feelsLike = temperature,
         precipProbability = 0,
         precipAmount = 0,
         windSpeed = 10,
@@ -176,35 +172,56 @@ function computeOutdoorScore(conditions, activity = 'default', userPrefs = {}) {
     const profile = ACTIVITY_PROFILES[activity] || ACTIVITY_PROFILES.default;
     const tempRange = userPrefs.tempRange || profile.tempRange;
 
+    // Use feels-like as the effective temperature for scoring
+    const effectiveTemp = feelsLike;
+
     let score = 100;
     const factors = {};
     const reasons = [];
+    const condLower = weatherCondition.toLowerCase();
 
     // =====================================================
-    // FACTOR 1: Precipitation
+    // FACTOR 1: Precipitation (weight: 35)
     // =====================================================
-    let precipPenalty = calculatePenalty(precipProbability, WEIGHTS.precipitation.thresholds);
-    
-    // Adjust for activity tolerance
-    precipPenalty = Math.min(1, precipPenalty / profile.rainTolerance);
-    
-    // Extra penalty if it's actively raining/snowing
-    if (weatherCondition.includes('rain') || weatherCondition.includes('snow')) {
-        precipPenalty = Math.max(precipPenalty, 0.7);
+    const isActivelyRaining = condLower.includes('rain') || condLower.includes('drizzle');
+    const isSnowing = condLower.includes('snow') || condLower.includes('sleet');
+    const isActivePrecip = isActivelyRaining || isSnowing;
+
+    let precipPenalty;
+    if (isActivePrecip) {
+        // When it's actively raining, use the intensity-based penalty (much harsher)
+        const intensityPenalty = calculatePenalty(precipAmount, WEIGHTS.precipitation.intensityThresholds);
+        // Minimum penalty of 0.6 for any active rain — it IS raining
+        precipPenalty = Math.max(0.6, intensityPenalty);
+    } else {
+        // Not currently raining — use probability
+        precipPenalty = calculatePenalty(precipProbability, WEIGHTS.precipitation.probabilityThresholds);
     }
-    
+
+    // Adjust for activity tolerance (lower tolerance = higher penalty)
+    precipPenalty = Math.min(1, precipPenalty / profile.rainTolerance);
+
     const precipPoints = Math.round(WEIGHTS.precipitation.weight * precipPenalty);
     score -= precipPoints;
-    
+
     factors.precipitation = {
         probability: precipProbability,
         amount: precipAmount,
         condition: weatherCondition,
+        isActive: isActivePrecip,
         penalty: precipPoints,
         maxPenalty: WEIGHTS.precipitation.weight
     };
-    
-    if (precipProbability <= 10 && !weatherCondition.includes('rain')) {
+
+    if (isActivePrecip) {
+        if (precipAmount >= 2) {
+            reasons.push(`Raining (${precipAmount.toFixed(1)}mm/h)`);
+        } else if (condLower.includes('drizzle')) {
+            reasons.push('Drizzle');
+        } else {
+            reasons.push('Rain');
+        }
+    } else if (precipProbability <= 10) {
         reasons.push('Dry conditions expected');
     } else if (precipProbability <= 30) {
         reasons.push(`Low rain chance (${precipProbability}%)`);
@@ -215,110 +232,110 @@ function computeOutdoorScore(conditions, activity = 'default', userPrefs = {}) {
     }
 
     // =====================================================
-    // FACTOR 2: Temperature
+    // FACTOR 2: Temperature — based on feels-like (weight: 30)
     // =====================================================
-    const tempPenalty = calculateTemperaturePenalty(temperature, tempRange);
+    const tempPenalty = calculateTemperaturePenalty(effectiveTemp, tempRange);
     const tempPoints = Math.round(WEIGHTS.temperature.weight * tempPenalty);
     score -= tempPoints;
-    
+
     factors.temperature = {
-        value: temperature,
+        actual: temperature,
+        feelsLike: feelsLike,
+        effective: effectiveTemp,
         idealRange: tempRange,
-        inIdealRange: temperature >= tempRange.min && temperature <= tempRange.max,
+        inIdealRange: effectiveTemp >= tempRange.min && effectiveTemp <= tempRange.max,
         penalty: tempPoints,
         maxPenalty: WEIGHTS.temperature.weight
     };
-    
-    if (temperature >= tempRange.min && temperature <= tempRange.max) {
-        reasons.push(`Comfortable temperature (${Math.round(temperature)}°C)`);
-    } else if (temperature < tempRange.min) {
-        reasons.push(`Cool (${Math.round(temperature)}°C) - dress warmly`);
+
+    if (effectiveTemp >= tempRange.min && effectiveTemp <= tempRange.max) {
+        reasons.push(`Comfortable (feels like ${Math.round(effectiveTemp)}°C)`);
+    } else if (effectiveTemp < tempRange.min) {
+        const diff = tempRange.min - effectiveTemp;
+        if (diff > 8) {
+            reasons.push(`Very cold (feels like ${Math.round(effectiveTemp)}°C)`);
+        } else {
+            reasons.push(`Cool (feels like ${Math.round(effectiveTemp)}°C)`);
+        }
     } else {
-        reasons.push(`Warm (${Math.round(temperature)}°C) - stay hydrated`);
+        reasons.push(`Hot (feels like ${Math.round(effectiveTemp)}°C)`);
     }
 
     // =====================================================
-    // FACTOR 3: Wind
+    // FACTOR 3: Wind (weight: 20)
     // =====================================================
     let windPenalty = calculatePenalty(windSpeed, WEIGHTS.wind.thresholds);
     windPenalty = Math.min(1, windPenalty / profile.windTolerance);
-    
+
     const windPoints = Math.round(WEIGHTS.wind.weight * windPenalty);
     score -= windPoints;
-    
+
     factors.wind = {
         speed: windSpeed,
         penalty: windPoints,
         maxPenalty: WEIGHTS.wind.weight
     };
-    
-    if (windSpeed <= 15) {
-        reasons.push('Light winds');
-    } else if (windSpeed <= 30) {
+
+    if (windSpeed <= 12) {
+        reasons.push('Calm winds');
+    } else if (windSpeed <= 25) {
         reasons.push(`Breezy (${Math.round(windSpeed)} km/h)`);
-    } else if (windSpeed <= 45) {
+    } else if (windSpeed <= 40) {
         reasons.push(`Windy (${Math.round(windSpeed)} km/h)`);
     } else {
         reasons.push(`Very windy (${Math.round(windSpeed)} km/h) - caution advised`);
     }
 
     // =====================================================
-    // FACTOR 4: Feels Like
-    // =====================================================
-    const feelsLikePenalty = WEIGHTS.feelsLike.getDifferencePenalty(temperature, feelsLike);
-    const feelsLikePoints = Math.round(WEIGHTS.feelsLike.weight * feelsLikePenalty);
-    score -= feelsLikePoints;
-    
-    factors.feelsLike = {
-        value: feelsLike,
-        difference: Math.round(feelsLike - temperature),
-        penalty: feelsLikePoints,
-        maxPenalty: WEIGHTS.feelsLike.weight
-    };
-    
-    if (Math.abs(feelsLike - temperature) > 5) {
-        if (feelsLike < temperature) {
-            reasons.push(`Feels colder (${Math.round(feelsLike)}°C) due to wind chill`);
-        } else {
-            reasons.push(`Feels warmer (${Math.round(feelsLike)}°C) due to humidity`);
-        }
-    }
-
-    // =====================================================
-    // FACTOR 5: UV Index
+    // FACTOR 4: UV Index (weight: 10)
     // =====================================================
     let uvPenalty = calculatePenalty(uvIndex, WEIGHTS.uvIndex.thresholds);
     uvPenalty = Math.min(1, uvPenalty * profile.uvSensitivity);
-    
+
     const uvPoints = Math.round(WEIGHTS.uvIndex.weight * uvPenalty);
     score -= uvPoints;
-    
+
     factors.uvIndex = {
         value: uvIndex,
         level: getUVLevel(uvIndex),
         penalty: uvPoints,
         maxPenalty: WEIGHTS.uvIndex.weight
     };
-    
+
     if (uvIndex >= 6) {
         reasons.push(`High UV (${uvIndex}) - sun protection needed`);
     }
 
     // =====================================================
-    // FACTOR 6: Visibility
+    // FACTOR 5: Visibility (weight: 5)
     // =====================================================
     const visPenalty = calculateVisibilityPenalty(visibility);
     const visPoints = Math.round(WEIGHTS.visibility.weight * visPenalty);
     score -= visPoints;
-    
+
     factors.visibility = {
         value: visibility,
         penalty: visPoints,
         maxPenalty: WEIGHTS.visibility.weight
     };
-    
+
     if (visibility < 2000) {
         reasons.push('Poor visibility');
+    }
+
+    // =====================================================
+    // COMBINED MISERY BONUS — multiple bad factors compound
+    // =====================================================
+    // If it's raining AND cold AND windy, it's worse than the sum of parts
+    const badFactorCount = [
+        isActivePrecip,
+        effectiveTemp < (tempRange.min - 3),
+        windSpeed > 30,
+    ].filter(Boolean).length;
+
+    if (badFactorCount >= 2) {
+        const miseryPenalty = badFactorCount * 5; // -10 or -15 extra
+        score -= miseryPenalty;
     }
 
     // =====================================================
@@ -333,7 +350,7 @@ function computeOutdoorScore(conditions, activity = 'default', userPrefs = {}) {
         factors,
         reasons: reasons.slice(0, 4),
         recommendation: getOutdoorRecommendation(score, factors, profile),
-        hourSummary: getHourSummary(temperature, precipProbability, windSpeed),
+        hourSummary: getHourSummary(effectiveTemp, precipProbability, windSpeed, isActivePrecip),
         timestamp: new Date().toISOString()
     };
 }
@@ -357,12 +374,13 @@ function findOutdoorWindows(hourlyForecast, activity = 'default', options = {}) 
 
     for (let i = 0; i < hourlyForecast.length; i++) {
         const hour = hourlyForecast[i];
-        
+
         const result = computeOutdoorScore({
             temperature: hour.temp ?? hour.temperature,
             feelsLike: hour.feels_like ?? hour.feelsLike ?? hour.temp,
             precipProbability: hour.pop ? hour.pop * 100 : (hour.precipProbability ?? 0),
-            windSpeed: (hour.wind_speed ?? hour.windSpeed ?? 0) * 3.6, // m/s to km/h if needed
+            precipAmount: hour.rain?.['1h'] ?? hour.rain ?? 0,
+            windSpeed: (hour.wind_speed ?? hour.windSpeed ?? 0) * 3.6,
             humidity: hour.humidity ?? 50,
             uvIndex: hour.uvi ?? hour.uvIndex ?? 0,
             visibility: hour.visibility ?? 10000,
@@ -412,15 +430,15 @@ function finalizeOutdoorWindow(window, lastHour) {
     window.avgScore = Math.round(window.scores.reduce((a, b) => a + b, 0) / window.scores.length);
     window.avgTemp = Math.round(window.temps.reduce((a, b) => a + b, 0) / window.temps.length);
     window.durationMinutes = window.scores.length * 60;
-    
+
     const peakIndex = window.scores.indexOf(window.peakScore);
     window.peakTime = window.hours[peakIndex]?.datetime;
-    
+
     delete window.scores;
     delete window.temps;
     delete window.hours;
     delete window.startIndex;
-    
+
     return window;
 }
 
@@ -439,22 +457,24 @@ function calculatePenalty(value, thresholds) {
 
 function calculateTemperaturePenalty(temp, range) {
     if (temp >= range.min && temp <= range.max) {
-        return 0;  // In ideal range
+        return 0;  // In ideal range — no penalty
     }
-    
-    // Calculate how far outside the range
+
+    // How far outside the range
     let distance;
     if (temp < range.min) {
         distance = range.min - temp;
     } else {
         distance = temp - range.max;
     }
-    
-    // Penalty increases with distance from range
-    if (distance <= 3) return 0.2;
-    if (distance <= 6) return 0.4;
-    if (distance <= 10) return 0.6;
-    if (distance <= 15) return 0.8;
+
+    // Graduated penalty — steeper than before
+    if (distance <= 2) return 0.15;
+    if (distance <= 4) return 0.3;
+    if (distance <= 6) return 0.5;
+    if (distance <= 8) return 0.65;
+    if (distance <= 10) return 0.8;
+    if (distance <= 15) return 0.9;
     return 1.0;
 }
 
@@ -476,27 +496,30 @@ function getUVLevel(uvIndex) {
 }
 
 function getOutdoorRating(score) {
-    if (score >= 85) return 'Excellent';
-    if (score >= 70) return 'Good';
-    if (score >= 55) return 'Fair';
-    if (score >= 40) return 'Poor';
+    if (score >= 80) return 'Excellent';
+    if (score >= 65) return 'Good';
+    if (score >= 50) return 'Fair';
+    if (score >= 35) return 'Poor';
     return 'Not Recommended';
 }
 
 function getOutdoorRecommendation(score, factors, profile) {
-    if (score >= 85) {
+    if (score >= 80) {
         return `Excellent conditions for ${profile.name.toLowerCase()}! Get outside and enjoy.`;
     }
-    
-    if (score >= 70) {
+
+    if (score >= 65) {
         let rec = `Good conditions for ${profile.name.toLowerCase()}.`;
-        if (factors.precipitation.probability > 30) {
+        if (factors.precipitation.probability > 30 || factors.precipitation.isActive) {
             rec += ' Pack a rain jacket just in case.';
         }
         return rec;
     }
-    
-    if (score >= 55) {
+
+    if (score >= 50) {
+        if (factors.precipitation.isActive) {
+            return 'Currently raining - consider waiting for a dry window.';
+        }
         if (factors.precipitation.probability > 50) {
             return 'Rain likely - consider rescheduling or bring waterproof gear.';
         }
@@ -504,22 +527,29 @@ function getOutdoorRecommendation(score, factors, profile) {
             return 'Quite windy - may be unpleasant for extended outdoor time.';
         }
         if (!factors.temperature.inIdealRange) {
-            return `Temperature outside comfort zone - dress appropriately.`;
+            return `Temperature outside comfort zone (feels like ${Math.round(factors.temperature.feelsLike)}°C) - dress appropriately.`;
         }
         return `Fair conditions. Possible but not ideal for ${profile.name.toLowerCase()}.`;
     }
-    
-    if (score >= 40) {
+
+    if (score >= 35) {
+        if (factors.precipitation.isActive) {
+            return 'Rain and poor conditions - indoor alternatives recommended.';
+        }
         return 'Conditions are poor. Consider indoor alternatives.';
     }
-    
-    return 'Not recommended for outdoor activities today.';
+
+    return 'Not recommended for outdoor activities right now.';
 }
 
-function getHourSummary(temp, precip, wind) {
+function getHourSummary(effectiveTemp, precip, wind, isRaining) {
     const parts = [];
-    parts.push(`${Math.round(temp)}°C`);
-    if (precip > 30) parts.push(`${precip}% rain`);
+    parts.push(`Feels ${Math.round(effectiveTemp)}°C`);
+    if (isRaining) {
+        parts.push('raining');
+    } else if (precip > 30) {
+        parts.push(`${precip}% rain`);
+    }
     if (wind > 25) parts.push(`${Math.round(wind)}km/h wind`);
     return parts.join(', ');
 }
@@ -529,14 +559,17 @@ function getHourSummary(temp, precip, wind) {
  */
 function prepareOutdoorForAI(scoreResult, window, location, activity) {
     return {
-        decision: scoreResult.score >= 70 ? 'yes' : scoreResult.score >= 50 ? 'maybe' : 'no',
-        confidence: scoreResult.score >= 80 ? 'high' : scoreResult.score >= 60 ? 'medium' : 'low',
+        decision: scoreResult.score >= 65 ? 'yes' : scoreResult.score >= 45 ? 'maybe' : 'no',
+        confidence: scoreResult.score >= 75 ? 'high' : scoreResult.score >= 55 ? 'medium' : 'low',
         activity: scoreResult.activity,
         location: { name: location.name },
         rating: scoreResult.rating,
         conditions: {
-            temperature: `${Math.round(scoreResult.factors.temperature.value)}°C`,
-            rain: `${scoreResult.factors.precipitation.probability}% chance`,
+            temperature: `${Math.round(scoreResult.factors.temperature.actual)}°C`,
+            feelsLike: `${Math.round(scoreResult.factors.temperature.feelsLike)}°C`,
+            rain: scoreResult.factors.precipitation.isActive
+                ? `Active (${scoreResult.factors.precipitation.amount}mm/h)`
+                : `${scoreResult.factors.precipitation.probability}% chance`,
             wind: `${Math.round(scoreResult.factors.wind.speed)} km/h`
         },
         window: window ? {
@@ -553,10 +586,10 @@ function prepareOutdoorForAI(scoreResult, window, location, activity) {
 function formatTime(datetime) {
     if (!datetime) return null;
     const date = new Date(datetime);
-    return date.toLocaleTimeString('en-IE', { 
-        hour: '2-digit', 
+    return date.toLocaleTimeString('en-IE', {
+        hour: '2-digit',
         minute: '2-digit',
-        hour12: false 
+        hour12: false
     });
 }
 

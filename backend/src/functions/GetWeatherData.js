@@ -1,19 +1,18 @@
 const { app } = require('@azure/functions');
 const axios = require('axios');
+const { getIrelandWarnings } = require('../utils/MeteoAlarm');
 
 /**
  * GetWeatherData - Combined weather endpoint
- * 
+ *
  * Returns ALL weather data in a single call:
  * - Current conditions
  * - Hourly forecast (48 hours)
  * - Daily forecast (7 days)
  * - Air quality
- * - Alerts
- * 
- * This reduces multiple API calls to ONE, improving performance
- * 
- * Endpoint: GET /api/GetWeatherData?lat=22.31&lon=114.16
+ * - Alerts (OpenWeather for all locations + MeteoAlarm for Ireland)
+ *
+ * Endpoint: GET /api/GetWeatherData?lat=53.35&lon=-6.26&country=IE
  */
 
 app.http('GetWeatherData', {
@@ -37,6 +36,7 @@ app.http('GetWeatherData', {
         try {
             const lat = request.query.get('lat');
             const lon = request.query.get('lon');
+            const country = (request.query.get('country') || '').toUpperCase();
 
             if (!lat || !lon) {
                 return {
@@ -47,17 +47,77 @@ app.http('GetWeatherData', {
             }
 
             const apiKey = process.env.OPENWEATHER_API_KEY;
-            
+
+            // Determine if this is an Ireland location (for MeteoAlarm)
+            const isIreland = country === 'IE' || country === 'IRELAND';
+
             // Fetch all data in parallel for speed
-            const [forecastResponse, airQualityResponse] = await Promise.all([
+            const fetches = [
                 // One Call API 3.0 - includes current, hourly, daily, alerts
                 axios.get(`https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&exclude=minutely&units=metric&appid=${apiKey}`),
                 // Air Quality
-                axios.get(`http://api.openweathermap.org/data/2.5/air_pollution?lat=${lat}&lon=${lon}&appid=${apiKey}`)
-            ]);
+                axios.get(`http://api.openweathermap.org/data/2.5/air_pollution?lat=${lat}&lon=${lon}&appid=${apiKey}`),
+            ];
 
-            const forecast = forecastResponse.data;
-            const aq = airQualityResponse.data.list[0];
+            // Add MeteoAlarm fetch for Ireland locations
+            if (isIreland) {
+                fetches.push(
+                    getIrelandWarnings().catch(err => {
+                        context.warn('MeteoAlarm fetch failed:', err.message);
+                        return [];
+                    })
+                );
+            }
+
+            const results = await Promise.all(fetches);
+            const forecast = results[0].data;
+            const aq = results[1].data.list[0];
+            const meteoAlarmWarnings = isIreland ? (results[2] || []) : [];
+
+            // Build alerts array — MeteoAlarm for Ireland, OpenWeather for all
+            const openWeatherAlerts = forecast.alerts ? forecast.alerts.map(alert => ({
+                event: alert.event,
+                sender: alert.sender_name,
+                start: new Date(alert.start * 1000).toISOString(),
+                end: new Date(alert.end * 1000).toISOString(),
+                description: alert.description,
+                tags: alert.tags || [],
+                source: 'openweather',
+            })) : [];
+
+            const meteoAlerts = meteoAlarmWarnings.map(w => ({
+                event: `${w.severityName} ${w.type} Warning`,
+                sender: w.sender || 'Met Éireann',
+                start: w.onset ? w.onset.toISOString() : new Date().toISOString(),
+                end: w.expires ? w.expires.toISOString() : new Date().toISOString(),
+                description: [
+                    w.headline,
+                    w.description,
+                    w.regionsText && !w.isNationwide ? `Regions: ${w.regionsText}` : null,
+                    w.instruction ? `Advice: ${w.instruction}` : null,
+                ].filter(Boolean).join('\n'),
+                tags: [w.type?.toLowerCase(), w.severityName?.toLowerCase()].filter(Boolean),
+                source: 'meteoalarm',
+                severity: w.severityName,
+                severityLevel: w.severityLevel,
+            }));
+
+            // Combine: MeteoAlarm first (more reliable for Ireland), then OpenWeather
+            // Deduplicate: if MeteoAlarm has warnings, skip OpenWeather alerts that look like duplicates
+            let combinedAlerts;
+            if (meteoAlerts.length > 0) {
+                // Use MeteoAlarm as primary source for Ireland
+                // Still include OpenWeather alerts that don't overlap with MeteoAlarm types
+                const meteoTypes = new Set(meteoAlarmWarnings.map(w => w.type?.toLowerCase()));
+                const uniqueOWAlerts = openWeatherAlerts.filter(ow => {
+                    const owEvent = (ow.event || '').toLowerCase();
+                    // Skip if MeteoAlarm already covers this type
+                    return !Array.from(meteoTypes).some(t => owEvent.includes(t));
+                });
+                combinedAlerts = [...meteoAlerts, ...uniqueOWAlerts];
+            } else {
+                combinedAlerts = openWeatherAlerts;
+            }
 
             // Build comprehensive response
             const result = {
@@ -67,7 +127,7 @@ app.http('GetWeatherData', {
                 timezone: forecast.timezone,
                 timezoneOffset: forecast.timezone_offset,
                 fetchedAt: new Date().toISOString(),
-                
+
                 // Current conditions
                 current: {
                     temp: forecast.current.temp,
@@ -98,7 +158,7 @@ app.http('GetWeatherData', {
                     clouds: hour.clouds,
                     windSpeed: hour.wind_speed * 3.6,
                     windDeg: hour.wind_deg,
-                    pop: hour.pop, // Probability of precipitation
+                    pop: hour.pop,
                     rain: hour.rain?.['1h'] || 0,
                     snow: hour.snow?.['1h'] || 0,
                     condition: hour.weather[0].main,
@@ -151,15 +211,8 @@ app.http('GetWeatherData', {
                     }
                 },
 
-                // Weather alerts (if any)
-                alerts: forecast.alerts ? forecast.alerts.map(alert => ({
-                    event: alert.event,
-                    sender: alert.sender_name,
-                    start: new Date(alert.start * 1000).toISOString(),
-                    end: new Date(alert.end * 1000).toISOString(),
-                    description: alert.description,
-                    tags: alert.tags || []
-                })) : []
+                // Weather alerts
+                alerts: combinedAlerts,
             };
 
             return {
@@ -167,21 +220,21 @@ app.http('GetWeatherData', {
                 headers: {
                     'Content-Type': 'application/json',
                     'Access-Control-Allow-Origin': '*',
-                    'Cache-Control': 'public, max-age=300', // Allow browser caching for 5 mins
+                    'Cache-Control': 'public, max-age=300',
                 },
                 body: JSON.stringify(result)
             };
 
         } catch (error) {
             context.error('Error fetching weather data:', error.message);
-            
+
             return {
                 status: error.response?.status || 500,
                 headers: {
                     'Content-Type': 'application/json',
                     'Access-Control-Allow-Origin': '*',
                 },
-                body: JSON.stringify({ 
+                body: JSON.stringify({
                     error: 'Failed to fetch weather data',
                     message: error.message
                 })

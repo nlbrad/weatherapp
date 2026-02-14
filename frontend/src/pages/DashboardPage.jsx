@@ -85,7 +85,7 @@ const DashboardPage = () => {
       const data = await weatherCache.get(
         locationSettings.latitude,
         locationSettings.longitude,
-        { forceRefresh }
+        { forceRefresh, country: locationSettings.country }
       );
 
       setLocation({

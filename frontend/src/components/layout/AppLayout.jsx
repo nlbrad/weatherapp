@@ -11,9 +11,9 @@
 
 import React, { useState } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { 
+import {
   Bell, MapPin, Settings, Menu, X,
-  User, LogOut, ChevronLeft, ChevronRight, Plus
+  User, LogOut, ChevronLeft, ChevronRight, Plus, Bitcoin
 } from 'lucide-react';
 import { useAuth } from '../../auth';
 
@@ -29,17 +29,24 @@ const NAV_ITEMS = [
     label: 'Alert Center',
     description: 'Manage your alerts',
   },
-  { 
-    id: 'locations', 
-    path: '/locations', 
-    icon: MapPin, 
-    label: 'Locations',
-    description: 'Alert locations',
+  {
+    id: 'locations',
+    path: '/locations',
+    icon: MapPin,
+    label: 'Weather',
+    description: 'Locations & forecasts',
   },
-{ 
-    id: 'preferences', 
-    path: '/preferences', 
-    icon: Settings, 
+{
+    id: 'crypto',
+    path: '/crypto',
+    icon: Bitcoin,
+    label: 'Crypto',
+    description: 'Markets, news & portfolio',
+  },
+  {
+    id: 'preferences',
+    path: '/preferences',
+    icon: Settings,
     label: 'Preferences',
     description: 'Notification settings',
   },

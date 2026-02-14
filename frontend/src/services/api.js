@@ -14,12 +14,13 @@ export const weatherAPI = {
    * Get ALL weather data in a single call (preferred method)
    * Returns: current, hourly, daily, airQuality, alerts
    */
-  getWeatherData: async (lat, lon) => {
+  getWeatherData: async (lat, lon, options = {}) => {
     if (!lat || !lon || isNaN(parseFloat(lat)) || isNaN(parseFloat(lon))) {
       throw new Error('Valid lat/lon coordinates required');
     }
-    
-    const url = `${API_BASE_URL}/GetWeatherData?lat=${lat}&lon=${lon}`;
+
+    let url = `${API_BASE_URL}/GetWeatherData?lat=${lat}&lon=${lon}`;
+    if (options.country) url += `&country=${encodeURIComponent(options.country)}`;
     const response = await fetch(url);
     if (!response.ok) throw new Error('Failed to fetch weather data');
     return response.json();
@@ -226,6 +227,9 @@ export const scoresAPI = {
     return response.json();
   },
 };
+
+// Re-export crypto API from its own module
+export { cryptoAPI } from './cryptoAPI';
 
 export default {
   weatherAPI,

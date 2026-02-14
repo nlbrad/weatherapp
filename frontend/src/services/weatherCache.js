@@ -73,15 +73,18 @@ const isUsable = (entry) => {
 };
 
 // Fetch fresh data from API
-const fetchWeatherData = async (lat, lon) => {
-  console.log(`🌐 Fetching weather for ${lat}, ${lon}`);
-  const url = `${API_BASE_URL}/GetWeatherData?lat=${lat}&lon=${lon}`;
-  
+const fetchWeatherData = async (lat, lon, country) => {
+  console.log(`🌐 Fetching weather for ${lat}, ${lon}${country ? ` (${country})` : ''}`);
+  let url = `${API_BASE_URL}/GetWeatherData?lat=${lat}&lon=${lon}`;
+  if (country) {
+    url += `&country=${encodeURIComponent(country)}`;
+  }
+
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`API error: ${response.status}`);
   }
-  
+
   const data = await response.json();
   return data;
 };
@@ -113,14 +116,14 @@ const weatherCache = {
    * @returns {Promise<object>} Weather data
    */
   get: async (lat, lon, options = {}) => {
-    const { forceRefresh = false, backgroundRefresh = true } = options;
+    const { forceRefresh = false, backgroundRefresh = true, country = null } = options;
     const key = getCacheKey(lat, lon);
     const cached = memoryCache.get(key);
 
     // Force refresh requested
     if (forceRefresh) {
       console.log(`🔄 Force refresh for ${key}`);
-      const data = await fetchWeatherData(lat, lon);
+      const data = await fetchWeatherData(lat, lon, country);
       memoryCache.set(key, data);
       persistCache();
       cleanupCache();
@@ -136,10 +139,10 @@ const weatherCache = {
     // Return stale cached data but refresh in background
     if (cached && isUsable(cached)) {
       console.log(`⏳ Cache hit (stale) for ${key}, refreshing in background`);
-      
+
       if (backgroundRefresh) {
         // Refresh in background without blocking
-        fetchWeatherData(lat, lon)
+        fetchWeatherData(lat, lon, country)
           .then(data => {
             memoryCache.set(key, data);
             persistCache();
@@ -147,13 +150,13 @@ const weatherCache = {
           })
           .catch(err => console.warn(`Background refresh failed for ${key}:`, err));
       }
-      
+
       return cached;
     }
 
     // No usable cache, must fetch
     console.log(`❌ Cache miss for ${key}, fetching...`);
-    const data = await fetchWeatherData(lat, lon);
+    const data = await fetchWeatherData(lat, lon, country);
     memoryCache.set(key, data);
     persistCache();
     cleanupCache();
@@ -226,7 +229,7 @@ const weatherCache = {
     console.log(`📥 Prefetching ${locations.length} locations...`);
     
     const results = await Promise.allSettled(
-      locations.map(loc => weatherCache.get(loc.latitude, loc.longitude))
+      locations.map(loc => weatherCache.get(loc.latitude, loc.longitude, { country: loc.country }))
     );
 
     const success = results.filter(r => r.status === 'fulfilled').length;

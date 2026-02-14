@@ -33,6 +33,7 @@ import NewLocationPage from './NewLocationPage';
 import DashboardPage from './DashboardPage';
 import PreferencesPage from './PreferencesPage';
 import AlertHistoryPage from './AlertHistoryPage';
+import CryptoPage from './CryptoPage';
 
 // Placeholder pages (to be built)
 const AlertEditPage = () => (
@@ -108,6 +109,18 @@ const AppRoutes = () => {
           <ProtectedRoute>
             <AppLayout>
               <DashboardPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Crypto Hub */}
+      <Route
+        path="/crypto"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <CryptoPage />
             </AppLayout>
           </ProtectedRoute>
         }
