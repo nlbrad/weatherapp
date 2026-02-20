@@ -14,6 +14,7 @@ const { app } = require('@azure/functions');
 const axios = require('axios');
 const { computeSkyScore, findSkyWindows, prepareForAINarration } = require('../scoring/SkyScore');
 const { getUserLocation } = require('../utils/UserLocationHelper');
+const SunCalc = require('suncalc');
 
 // Configuration
 const OPENWEATHER_API_KEY = process.env.OPENWEATHER_API_KEY;
@@ -313,23 +314,16 @@ async function getWeatherDataFallback(lat, lon, context) {
  * Get astronomical data (moon position, sun position, darkness)
  */
 async function getAstronomicalData(lat, lon, context) {
-    // For production, use a proper astronomy API or library
-    // For now, we'll compute basic values
-    
     const now = new Date();
-    const hour = now.getUTCHours();
-    
-    // Simple sun altitude approximation (replace with proper calculation)
-    // This is a very rough approximation - use SunCalc library in production
-    const solarNoon = 12; // UTC approximate
-    const hourFromNoon = Math.abs(hour - solarNoon);
-    const maxAltitude = 90 - Math.abs(lat - 23.5 * Math.cos(getDayOfYear(now) * Math.PI / 182.5));
-    const sunAltitude = maxAltitude * Math.cos(hourFromNoon * Math.PI / 12);
 
-    // Determine darkness/twilight phase
+    // SunCalc provides accurate sun/moon positions
+    const sunPos = SunCalc.getPosition(now, lat, lon);
+    const sunAltitude = sunPos.altitude * 180 / Math.PI; // radians -> degrees
+
+    // Twilight phase based on sun altitude
     let isDark = false;
     let twilightPhase = 'day';
-    
+
     if (sunAltitude < -18) {
         isDark = true;
         twilightPhase = 'astronomical';
@@ -341,14 +335,12 @@ async function getAstronomicalData(lat, lon, context) {
         twilightPhase = 'horizon';
     }
 
-    // Moon phase calculation (simplified)
-    const lunarCycle = 29.53059; // days
-    const knownNewMoon = new Date('2024-01-11').getTime();
-    const daysSinceNewMoon = (now.getTime() - knownNewMoon) / (1000 * 60 * 60 * 24);
-    const moonPhase = (daysSinceNewMoon % lunarCycle) / lunarCycle;
+    const moonIllum = SunCalc.getMoonIllumination(now);
+    const moonPhase = moonIllum.phase; // 0-1
+    const moonPos = SunCalc.getMoonPosition(now, lat, lon);
+    const moonAltitude = moonPos.altitude * 180 / Math.PI; // radians -> degrees
 
-    // Moon altitude (very simplified - use library in production)
-    const moonAltitude = calculateMoonAltitude(lat, lon, now, moonPhase);
+    const moonTimes = SunCalc.getMoonTimes(now, lat, lon);
 
     return {
         sunAltitude: Math.round(sunAltitude),
@@ -357,8 +349,8 @@ async function getAstronomicalData(lat, lon, context) {
         moonPhase: Math.round(moonPhase * 100) / 100,
         moonPhaseName: getMoonPhaseName(moonPhase),
         moonAltitude: Math.round(moonAltitude),
-        moonRise: null, // Would need proper calculation
-        moonSet: null
+        moonRise: moonTimes?.rise || null,
+        moonSet: moonTimes?.set || null
     };
 }
 
@@ -377,45 +369,18 @@ function getMoonPhaseName(phase) {
 }
 
 /**
- * Calculate moon altitude (simplified)
- */
-function calculateMoonAltitude(lat, lon, date, moonPhase) {
-    // This is a very rough approximation
-    // In production, use a proper astronomy library like SunCalc
-    const hour = date.getUTCHours();
-    
-    // Moon rises/sets roughly 50 min later each day
-    // At full moon, it rises at sunset; at new moon, rises at sunrise
-    const moonHourAngle = (hour + moonPhase * 12 - 12) * 15; // degrees
-    
-    // Simplified altitude calculation
-    const latRad = lat * Math.PI / 180;
-    const altitude = Math.sin(latRad) * Math.sin(0) + 
-                     Math.cos(latRad) * Math.cos(0) * Math.cos(moonHourAngle * Math.PI / 180);
-    
-    return Math.asin(altitude) * 180 / Math.PI;
-}
-
-/**
- * Get day of year
- */
-function getDayOfYear(date) {
-    const start = new Date(date.getFullYear(), 0, 0);
-    const diff = date - start;
-    const oneDay = 1000 * 60 * 60 * 24;
-    return Math.floor(diff / oneDay);
-}
-
-/**
  * Enrich hourly forecast with astronomical data for each hour
  */
 function enrichHourlyWithAstro(hourly, currentAstro, lat, lon) {
     return hourly.map(hour => {
         const datetime = new Date(hour.dt * 1000);
-        // Simplified: just check if it's nighttime hours
-        const utcHour = datetime.getUTCHours();
-        const isDark = utcHour < 5 || utcHour > 21; // Very rough approximation
-        
+        const sunPos = SunCalc.getPosition(datetime, lat, lon);
+        const sunAlt = sunPos.altitude * 180 / Math.PI;
+        const isDark = sunAlt < -18;
+
+        const moonPos = SunCalc.getMoonPosition(datetime, lat, lon);
+        const moonAlt = moonPos.altitude * 180 / Math.PI;
+
         return {
             ...hour,
             datetime: datetime.toISOString(),
@@ -423,8 +388,9 @@ function enrichHourlyWithAstro(hourly, currentAstro, lat, lon) {
             humidity: hour.humidity,
             windSpeed: hour.wind_speed * 3.6, // m/s to km/h
             moonPhase: currentAstro.moonPhase,
-            moonAltitude: currentAstro.moonAltitude, // Would need per-hour calculation
-            isDark
+            moonAltitude: Math.round(moonAlt),
+            isDark,
+            sunAltitude: Math.round(sunAlt)
         };
     }).filter(hour => hour.isDark); // Only return dark hours for sky viewing
 }
