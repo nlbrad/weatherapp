@@ -26,7 +26,7 @@ app.http('GetUserPreferences', {
                 };
             }
 
-            const connectionString = process.env.AzureWebJobsStorage;
+            const connectionString = process.env.AzureWebJobsStorage || process.env.AZURE_STORAGE_CONNECTION_STRING;
             
             // Default preferences (returned if user has none saved)
             const defaultPreferences = {

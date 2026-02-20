@@ -229,7 +229,7 @@ async function sendReply(chatId, text) {
  * Save Telegram user to database
  */
 async function saveTelegramUser(chatId, firstName, username, context) {
-    const connectionString = process.env.AzureWebJobsStorage;
+    const connectionString = process.env.AzureWebJobsStorage || process.env.AZURE_STORAGE_CONNECTION_STRING;
     
     if (!connectionString || connectionString === 'UseDevelopmentStorage=true') {
         context.log('Using development storage - user save simulated');
@@ -266,7 +266,7 @@ async function saveTelegramUser(chatId, firstName, username, context) {
  * Disable alerts for a user
  */
 async function disableTelegramAlerts(chatId, context) {
-    const connectionString = process.env.AzureWebJobsStorage;
+    const connectionString = process.env.AzureWebJobsStorage || process.env.AZURE_STORAGE_CONNECTION_STRING;
     
     if (!connectionString || connectionString === 'UseDevelopmentStorage=true') {
         context.log('Using development storage - disable simulated');
@@ -292,7 +292,7 @@ async function disableTelegramAlerts(chatId, context) {
  * Get user status from database
  */
 async function getTelegramUserStatus(chatId, context) {
-    const connectionString = process.env.AzureWebJobsStorage;
+    const connectionString = process.env.AzureWebJobsStorage || process.env.AZURE_STORAGE_CONNECTION_STRING;
     
     if (!connectionString || connectionString === 'UseDevelopmentStorage=true') {
         return null;

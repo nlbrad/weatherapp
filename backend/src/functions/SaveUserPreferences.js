@@ -35,7 +35,7 @@ app.http('SaveUserPreferences', {
                 };
             }
 
-            const connectionString = process.env.AzureWebJobsStorage;
+            const connectionString = process.env.AzureWebJobsStorage || process.env.AZURE_STORAGE_CONNECTION_STRING;
 
             // Development mode - just log and return success
             if (!connectionString || connectionString === 'UseDevelopmentStorage=true') {

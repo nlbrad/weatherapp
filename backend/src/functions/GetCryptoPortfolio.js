@@ -49,7 +49,7 @@ async function handleGet(request, context) {
         };
     }
 
-    const connectionString = process.env.AzureWebJobsStorage;
+    const connectionString = process.env.AzureWebJobsStorage || process.env.AZURE_STORAGE_CONNECTION_STRING;
 
     // Development mode — use in-memory store
     if (!connectionString || connectionString === 'UseDevelopmentStorage=true') {
@@ -214,7 +214,7 @@ async function handlePost(request, context) {
         buyDate: h.buyDate || new Date().toISOString().split('T')[0],
     })).filter(h => h.coinId && h.amount > 0);
 
-    const connectionString = process.env.AzureWebJobsStorage;
+    const connectionString = process.env.AzureWebJobsStorage || process.env.AZURE_STORAGE_CONNECTION_STRING;
 
     // Development mode — persist to in-memory store
     if (!connectionString || connectionString === 'UseDevelopmentStorage=true') {

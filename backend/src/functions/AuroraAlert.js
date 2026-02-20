@@ -293,7 +293,7 @@ async function checkAndSendAuroraAlerts(context, force = false) {
         return results;
     }
     
-    const connectionString = process.env.AzureWebJobsStorage;
+    const connectionString = process.env.AzureWebJobsStorage || process.env.AZURE_STORAGE_CONNECTION_STRING;
     
     if (!connectionString || connectionString === 'UseDevelopmentStorage=true') {
         context.log('Development mode - skipping user notifications');

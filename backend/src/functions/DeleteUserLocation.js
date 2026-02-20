@@ -1,7 +1,7 @@
 const { app } = require('@azure/functions');
 const { TableClient } = require('@azure/data-tables');
 
-const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING || 'UseDevelopmentStorage=true';
+const connectionString = process.env.AzureWebJobsStorage || process.env.AZURE_STORAGE_CONNECTION_STRING || 'UseDevelopmentStorage=true';
 const tableClient = TableClient.fromConnectionString(connectionString, 'UserLocations');
 
 /**

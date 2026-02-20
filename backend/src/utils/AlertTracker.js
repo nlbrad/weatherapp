@@ -21,7 +21,7 @@ let tableClient = null;
 function getTableClient() {
     if (tableClient) return tableClient;
     
-    const connectionString = process.env.AzureWebJobsStorage;
+    const connectionString = process.env.AzureWebJobsStorage || process.env.AZURE_STORAGE_CONNECTION_STRING;
     if (!connectionString || connectionString === 'UseDevelopmentStorage=true') {
         return null; // Development mode - no persistence
     }

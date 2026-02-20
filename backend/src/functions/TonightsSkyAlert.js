@@ -390,7 +390,7 @@ function getHighlights(skyScore, planets, meteors) {
 // Process all users (for timer trigger)
 // ============================================
 async function processAllUsersForStargazingAlerts(context, force = false) {
-    const connectionString = process.env.AzureWebJobsStorage;
+    const connectionString = process.env.AzureWebJobsStorage || process.env.AZURE_STORAGE_CONNECTION_STRING;
     
     const results = {
         processed: 0,

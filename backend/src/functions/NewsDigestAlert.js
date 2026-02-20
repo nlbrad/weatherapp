@@ -371,7 +371,7 @@ async function sendToUsersAtTime(context, hour, minute = 0) {
         errors: []
     };
     
-    const connectionString = process.env.AzureWebJobsStorage;
+    const connectionString = process.env.AzureWebJobsStorage || process.env.AZURE_STORAGE_CONNECTION_STRING;
     if (!connectionString || connectionString === 'UseDevelopmentStorage=true') {
         context.log('Development mode - skipping');
         return results;
@@ -500,7 +500,7 @@ async function sendToAllUsers(context, period, force = false) {
         errors: []
     };
     
-    const connectionString = process.env.AzureWebJobsStorage;
+    const connectionString = process.env.AzureWebJobsStorage || process.env.AZURE_STORAGE_CONNECTION_STRING;
     if (!connectionString || connectionString === 'UseDevelopmentStorage=true') {
         context.log('Development mode - skipping');
         return results;
