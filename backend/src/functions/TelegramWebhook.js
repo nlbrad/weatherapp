@@ -23,6 +23,15 @@ app.http('TelegramWebhook', {
         context.log('TelegramWebhook received update');
 
         try {
+            const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
+            if (secret) {
+                const incoming = request.headers.get('x-telegram-bot-api-secret-token');
+                if (incoming !== secret) {
+                    context.warn('Telegram webhook secret mismatch');
+                    return { status: 401, body: 'Unauthorized' };
+                }
+            }
+
             const update = await request.json();
             context.log('Telegram update:', JSON.stringify(update, null, 2));
 

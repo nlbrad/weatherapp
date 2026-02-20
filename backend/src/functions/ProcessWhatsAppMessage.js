@@ -60,64 +60,70 @@ const DEFAULT_LOCATION = { lat: 53.3498, lon: -6.2603, name: 'Dublin' };
 // MAIN WEBHOOK HANDLER
 // =====================================================
 
-app.http('ProcessWhatsAppMessage', {
-    methods: ['POST'],
-    authLevel: 'anonymous',
-    route: 'whatsapp/webhook',
-    handler: async (request, context) => {
-        const startTime = Date.now();
-        
-        try {
-            // Parse Twilio payload
-            const body = await parseFormBody(request);
-            const from = body.From || '';
-            const messageBody = body.Body || '';
-            const phoneNumber = from.replace('whatsapp:', '');
+const WHATSAPP_ENABLED = process.env.WHATSAPP_ENABLED === 'true';
 
-            context.log(`[WhatsApp] From: ${phoneNumber}`);
-            context.log(`[WhatsApp] Message: "${messageBody}"`);
-
-            if (!messageBody.trim()) {
-                return createTwiMLResponse("I didn't catch that. What would you like to know?");
-            }
-
-            // ================================
-            // STEP 1: AI INTENT DETECTION
-            // ================================
-            const intentResult = await detectIntentWithAI(messageBody);
+if (WHATSAPP_ENABLED) {
+    app.http('ProcessWhatsAppMessage', {
+        methods: ['POST'],
+        authLevel: 'anonymous',
+        route: 'whatsapp/webhook',
+        handler: async (request, context) => {
+            const startTime = Date.now();
             
-            context.log(`[Intent] ${intentResult.intent} (confidence: ${intentResult.confidence})`);
-            context.log(`[Entities]`, intentResult.entities);
-            if (intentResult.reasoning) {
-                context.log(`[Reasoning] ${intentResult.reasoning}`);
+            try {
+                // Parse Twilio payload
+                const body = await parseFormBody(request);
+                const from = body.From || '';
+                const messageBody = body.Body || '';
+                const phoneNumber = from.replace('whatsapp:', '');
+
+                context.log(`[WhatsApp] From: ${phoneNumber}`);
+                context.log(`[WhatsApp] Message: "${messageBody}"`);
+
+                if (!messageBody.trim()) {
+                    return createTwiMLResponse("I didn't catch that. What would you like to know?");
+                }
+
+                // ================================
+                // STEP 1: AI INTENT DETECTION
+                // ================================
+                const intentResult = await detectIntentWithAI(messageBody);
+                
+                context.log(`[Intent] ${intentResult.intent} (confidence: ${intentResult.confidence})`);
+                context.log(`[Entities]`, intentResult.entities);
+                if (intentResult.reasoning) {
+                    context.log(`[Reasoning] ${intentResult.reasoning}`);
+                }
+
+                // ================================
+                // STEP 2: PROCESS INTENT
+                // ================================
+                const responseText = await processIntent(
+                    intentResult,
+                    phoneNumber,
+                    messageBody,
+                    context
+                );
+
+                // ================================
+                // STEP 3: SEND RESPONSE
+                // ================================
+                const duration = Date.now() - startTime;
+                context.log(`[Response] Generated in ${duration}ms`);
+
+                return createTwiMLResponse(responseText);
+
+            } catch (error) {
+                context.error('Webhook error:', error);
+                return createTwiMLResponse(
+                    "Sorry, something went wrong. Please try again!"
+                );
             }
-
-            // ================================
-            // STEP 2: PROCESS INTENT
-            // ================================
-            const responseText = await processIntent(
-                intentResult,
-                phoneNumber,
-                messageBody,
-                context
-            );
-
-            // ================================
-            // STEP 3: SEND RESPONSE
-            // ================================
-            const duration = Date.now() - startTime;
-            context.log(`[Response] Generated in ${duration}ms`);
-
-            return createTwiMLResponse(responseText);
-
-        } catch (error) {
-            context.error('Webhook error:', error);
-            return createTwiMLResponse(
-                "Sorry, something went wrong. Please try again!"
-            );
         }
-    }
-});
+    });
+} else {
+    console.log('WhatsApp webhook disabled (set WHATSAPP_ENABLED=true to enable)');
+}
 
 // =====================================================
 // INTENT PROCESSOR

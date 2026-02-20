@@ -13,6 +13,7 @@
 const { app } = require('@azure/functions');
 const axios = require('axios');
 const { computeSkyScore, findSkyWindows, prepareForAINarration } = require('../scoring/SkyScore');
+const { getUserLocation } = require('../utils/UserLocationHelper');
 
 // Configuration
 const OPENWEATHER_API_KEY = process.env.OPENWEATHER_API_KEY;
@@ -67,10 +68,26 @@ async function handleSingleLocation(request, context) {
                 jsonBody: { error: 'Either lat/lon or locationId required' }
             };
         }
-        // TODO: Lookup location from database
+
+        // Resolve locationId to a saved user location (primary)
+        const resolved = await getUserLocation(locationId, context);
+        if (!resolved?.latitude || !resolved?.longitude) {
+            return {
+                status: 400,
+                jsonBody: { error: 'locationId lookup failed. Use lat/lon.' }
+            };
+        }
+
+        const result = await computeScoreForLocation(
+            parseFloat(resolved.latitude),
+            parseFloat(resolved.longitude),
+            { includeWindows, includeAIData, locationInfo: { name: resolved.locationName } },
+            context
+        );
+
         return {
-            status: 400,
-            jsonBody: { error: 'locationId lookup not yet implemented. Use lat/lon.' }
+            status: 200,
+            jsonBody: result
         };
     }
 

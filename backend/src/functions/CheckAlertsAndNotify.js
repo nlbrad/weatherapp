@@ -4,15 +4,21 @@ const axios = require('axios');
 const twilio = require('twilio');
 
 // Initialize clients
-const storageConnectionString = process.env.AZURE_STORAGE_CONNECTION_STRING || 'UseDevelopmentStorage=true';
+const storageConnectionString = process.env.AzureWebJobsStorage || process.env.AZURE_STORAGE_CONNECTION_STRING || 'UseDevelopmentStorage=true';
 const tableClient = TableClient.fromConnectionString(storageConnectionString, 'UserLocations');
 
-const twilioClient = twilio(
-    process.env.TWILIO_ACCOUNT_SID,
-    process.env.TWILIO_AUTH_TOKEN
-);
-
+const WHATSAPP_ENABLED = process.env.WHATSAPP_ENABLED === 'true';
 const openWeatherApiKey = process.env.OPENWEATHER_API_KEY;
+
+function getTwilioClient() {
+    if (!WHATSAPP_ENABLED) {
+        return null;
+    }
+    return twilio(
+        process.env.TWILIO_ACCOUNT_SID,
+        process.env.TWILIO_AUTH_TOKEN
+    );
+}
 
 // Timer trigger - runs every hour (except 7am to avoid duplicate with DailyForecast)
 app.timer('CheckAlertsAndNotify', {
@@ -103,7 +109,14 @@ async function checkAndNotify(context) {
                     // For now, we'll use a test number from environment variable
                     const userPhone = process.env.TEST_WHATSAPP_NUMBER;
 
-                    if (userPhone) {
+                    if (!WHATSAPP_ENABLED) {
+                        context.log('WhatsApp disabled - alert would have been sent:', alertMessage);
+                    } else if (userPhone) {
+                        const twilioClient = getTwilioClient();
+                        if (!twilioClient) {
+                            context.log('Twilio client not configured - alert would have been sent:', alertMessage);
+                            continue;
+                        }
                         const message = await twilioClient.messages.create({
                             from: process.env.TWILIO_WHATSAPP_FROM,
                             to: `whatsapp:${userPhone}`,
