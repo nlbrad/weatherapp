@@ -373,6 +373,20 @@ function areTitlesSimilar(title1, title2) {
 }
 
 // ============================================
+// TWELVE DATA CACHE
+// 
+// Daily closing prices only change once per day at
+// market close, so 30 minutes is very conservative.
+// This cuts Twelve Data calls from ~720/day to ~48/day.
+// ============================================
+
+const TWELVE_DATA_CACHE_MS = 30 * 60 * 1000; // 30 minutes
+let twelveDataCache = {
+    data: null,       // Array of { symbol, name, price, change24h }
+    timestamp: null,
+};
+
+// ============================================
 // MARKET DATA
 // ============================================
 
@@ -430,104 +444,145 @@ async function fetchMarketData() {
         console.warn('Failed to fetch crypto prices:', err.message);
     }
     
-    // Traditional markets via Twelve Data API
+// ============================================
+// TWELVE DATA CACHE
+// 
+// Add this ABOVE the fetchMarketData() function,
+// alongside the existing CoinGecko cache variables.
+// 
+// Daily closing prices only change once per day at
+// market close, so 30 minutes is very conservative.
+// This cuts Twelve Data calls from ~720/day to ~48/day.
+// ============================================
+
+const TWELVE_DATA_CACHE_MS = 30 * 60 * 1000; // 30 minutes
+let twelveDataCache = {
+    data: null,       // Array of { symbol, name, price, change24h }
+    timestamp: null,
+};
+
+
+// ============================================
+// Then REPLACE the Twelve Data section inside
+// fetchMarketData() — from the line:
+//   "// Traditional markets via Twelve Data API"
+// down to and including the else block:
+//   "console.warn('TWELVE_DATA_API_KEY not configured...')"
+// 
+// Replace it with this:
+// ============================================
+
+    // Traditional markets via Twelve Data API (with 30-min cache)
     const twelveDataKey = process.env.TWELVE_DATA_API_KEY;
     
     if (twelveDataKey) {
-        try {
-            console.log('Fetching traditional markets from Twelve Data...');
-            
-            // Fetch S&P 500 via SPY ETF (free tier compatible)
-            // Use time_series endpoint with 1day interval to get latest close + change
-            const spUrl = `https://api.twelvedata.com/time_series?symbol=SPY&interval=1day&outputsize=2&apikey=${twelveDataKey}`;
-            const spResponse = await fetch(spUrl, { signal: AbortSignal.timeout(8000) });
-            
-            console.log(`S&P 500 (SPY) response status: ${spResponse.status}`);
-            
-            if (spResponse.ok) {
-                const spData = await spResponse.json();
-                console.log('S&P 500 raw response:', JSON.stringify(spData).substring(0, 500));
+        // Check cache first — daily prices don't change often
+        if (twelveDataCache.data && twelveDataCache.timestamp &&
+            Date.now() - twelveDataCache.timestamp < TWELVE_DATA_CACHE_MS) {
+            console.log('Using cached Twelve Data response (traditional markets)');
+            data.traditional = twelveDataCache.data;
+        } else {
+            try {
+                console.log('Fetching traditional markets from Twelve Data (cache miss)...');
                 
-                // Check for errors
-                if (spData.status === 'error') {
-                    console.error('S&P 500 API error:', spData.message);
-                } else if (spData.values && spData.values.length >= 2) {
-                    // Get latest (today) and previous day
-                    const today = spData.values[0];
-                    const yesterday = spData.values[1];
-                    
-                    const spyPrice = parseFloat(today.close);
-                    const spyPrevPrice = parseFloat(yesterday.close);
-                    
-                    // SPY tracks S&P 500 at ~1/10 ratio, so multiply by 10
-                    const price = spyPrice * 10;
-                    const change = ((spyPrice - spyPrevPrice) / spyPrevPrice) * 100;
-                    
-                    console.log(`S&P 500: ${price.toFixed(2)} (${change > 0 ? '+' : ''}${change.toFixed(2)}%) [via SPY: $${spyPrice.toFixed(2)}]`);
-                    
-                    data.traditional.push({
-                        symbol: 'SP500',
-                        name: 'S&P 500',
-                        price: price,
-                        change24h: change,
-                    });
-                } else {
-                    console.warn('S&P 500 data missing values array or insufficient data');
-                }
-            } else {
-                const errorText = await spResponse.text();
-                console.error(`S&P 500 HTTP error: ${spResponse.status} - ${errorText}`);
-            }
-            
-            // Small delay to avoid rate limiting
-            await new Promise(resolve => setTimeout(resolve, 300));
-            
-            // Fetch Gold via GLD ETF (free tier compatible)
-            const goldUrl = `https://api.twelvedata.com/time_series?symbol=GLD&interval=1day&outputsize=2&apikey=${twelveDataKey}`;
-            const goldResponse = await fetch(goldUrl, { signal: AbortSignal.timeout(8000) });
-            
-            console.log(`Gold (GLD) response status: ${goldResponse.status}`);
-            
-            if (goldResponse.ok) {
-                const goldData = await goldResponse.json();
-                console.log('Gold raw response:', JSON.stringify(goldData).substring(0, 500));
+                // Fetch S&P 500 via SPY ETF (free tier compatible)
+                const spUrl = `https://api.twelvedata.com/time_series?symbol=SPY&interval=1day&outputsize=2&apikey=${twelveDataKey}`;
+                const spResponse = await fetch(spUrl, { signal: AbortSignal.timeout(8000) });
                 
-                // Check for errors
-                if (goldData.status === 'error') {
-                    console.error('Gold API error:', goldData.message);
-                } else if (goldData.values && goldData.values.length >= 2) {
-                    // Get latest (today) and previous day
-                    const today = goldData.values[0];
-                    const yesterday = goldData.values[1];
+                console.log(`S&P 500 (SPY) response status: ${spResponse.status}`);
+                
+                if (spResponse.ok) {
+                    const spData = await spResponse.json();
                     
-                    const gldPrice = parseFloat(today.close);
-                    const gldPrevPrice = parseFloat(yesterday.close);
-                    
-                    // GLD tracks gold at ~1/10 ratio, so multiply by 10
-                    const price = gldPrice * 10;
-                    const change = ((gldPrice - gldPrevPrice) / gldPrevPrice) * 100;
-                    
-                    console.log(`Gold: $${price.toFixed(2)}/oz (${change > 0 ? '+' : ''}${change.toFixed(2)}%) [via GLD: $${gldPrice.toFixed(2)}]`);
-                    
-                    data.traditional.push({
-                        symbol: 'GOLD',
-                        name: 'Gold',
-                        price: price,
-                        change24h: change,
-                    });
+                    if (spData.status === 'error') {
+                        console.error('S&P 500 API error:', spData.message);
+                    } else if (spData.values && spData.values.length >= 2) {
+                        const today = spData.values[0];
+                        const yesterday = spData.values[1];
+                        
+                        const spyPrice = parseFloat(today.close);
+                        const spyPrevPrice = parseFloat(yesterday.close);
+                        
+                        const price = spyPrice * 10;
+                        const change = ((spyPrice - spyPrevPrice) / spyPrevPrice) * 100;
+                        
+                        console.log(`S&P 500: ${price.toFixed(2)} (${change > 0 ? '+' : ''}${change.toFixed(2)}%) [via SPY: $${spyPrice.toFixed(2)}]`);
+                        
+                        data.traditional.push({
+                            symbol: 'SP500',
+                            name: 'S&P 500',
+                            price: price,
+                            change24h: change,
+                        });
+                    } else {
+                        console.warn('S&P 500 data missing values array or insufficient data');
+                    }
                 } else {
-                    console.warn('Gold data missing values array or insufficient data');
+                    const errorText = await spResponse.text();
+                    console.error(`S&P 500 HTTP error: ${spResponse.status} - ${errorText}`);
                 }
-            } else {
-                const errorText = await goldResponse.text();
-                console.error(`Gold HTTP error: ${goldResponse.status} - ${errorText}`);
+                
+                // Small delay to avoid rate limiting
+                await new Promise(resolve => setTimeout(resolve, 300));
+                
+                // Fetch Gold via GLD ETF (free tier compatible)
+                const goldUrl = `https://api.twelvedata.com/time_series?symbol=GLD&interval=1day&outputsize=2&apikey=${twelveDataKey}`;
+                const goldResponse = await fetch(goldUrl, { signal: AbortSignal.timeout(8000) });
+                
+                console.log(`Gold (GLD) response status: ${goldResponse.status}`);
+                
+                if (goldResponse.ok) {
+                    const goldData = await goldResponse.json();
+                    
+                    if (goldData.status === 'error') {
+                        console.error('Gold API error:', goldData.message);
+                    } else if (goldData.values && goldData.values.length >= 2) {
+                        const today = goldData.values[0];
+                        const yesterday = goldData.values[1];
+                        
+                        const gldPrice = parseFloat(today.close);
+                        const gldPrevPrice = parseFloat(yesterday.close);
+                        
+                        const price = gldPrice * 10;
+                        const change = ((gldPrice - gldPrevPrice) / gldPrevPrice) * 100;
+                        
+                        console.log(`Gold: $${price.toFixed(2)}/oz (${change > 0 ? '+' : ''}${change.toFixed(2)}%) [via GLD: $${gldPrice.toFixed(2)}]`);
+                        
+                        data.traditional.push({
+                            symbol: 'GOLD',
+                            name: 'Gold',
+                            price: price,
+                            change24h: change,
+                        });
+                    } else {
+                        console.warn('Gold data missing values array or insufficient data');
+                    }
+                } else {
+                    const errorText = await goldResponse.text();
+                    console.error(`Gold HTTP error: ${goldResponse.status} - ${errorText}`);
+                }
+                
+                console.log(`Traditional market prices fetched: ${data.traditional.length} assets`);
+                
+                // Cache the results (only if we got at least one asset)
+                if (data.traditional.length > 0) {
+                    twelveDataCache = {
+                        data: [...data.traditional],
+                        timestamp: Date.now(),
+                    };
+                    console.log('Twelve Data response cached for 30 minutes');
+                }
+                
+            } catch (err) {
+                console.error('Failed to fetch traditional markets from Twelve Data:', err.message);
+                console.error('Error stack:', err.stack);
+                
+                // If fetch failed but we have stale cache, use it as fallback
+                if (twelveDataCache.data) {
+                    console.log('Using stale Twelve Data cache as fallback');
+                    data.traditional = twelveDataCache.data;
+                }
             }
-            
-            console.log(`Traditional market prices fetched: ${data.traditional.length} assets`);
-            
-        } catch (err) {
-            console.error('Failed to fetch traditional markets from Twelve Data:', err.message);
-            console.error('Error stack:', err.stack);
         }
     } else {
         console.warn('TWELVE_DATA_API_KEY not configured - skipping traditional markets');

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Search, RotateCcw, Plus, Check,
-  Cloud, Calendar, Star, Heart, Mountain } from 'lucide-react';
+  Cloud, Calendar, Star, Heart, Mountain, Sparkles } from 'lucide-react';
 import { WIDGET_REGISTRY, WIDGET_CATEGORIES } from './widgetRegistry';
 
 /**

@@ -43,6 +43,7 @@ module.exports = {
         'slide-up': 'slideUp 0.4s ease-out',
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
         'glow': 'glow 2s ease-in-out infinite alternate',
+        'ticker-scroll': 'tickerScroll var(--ticker-duration, 30s) linear infinite',
       },
       keyframes: {
         fadeIn: {
@@ -56,7 +57,11 @@ module.exports = {
         glow: {
           '0%': { boxShadow: '0 0 5px rgba(0, 212, 255, 0.5)' },
           '100%': { boxShadow: '0 0 20px rgba(0, 212, 255, 0.8)' },
-        }
+        },
+        tickerScroll: {
+          '0%': { transform: 'translateX(0)' },
+          '100%': { transform: 'translateX(-50%)' },
+        },
       },
       backdropBlur: {
         xs: '2px',

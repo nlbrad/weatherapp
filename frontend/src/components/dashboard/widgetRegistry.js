@@ -110,6 +110,18 @@ export const WIDGET_REGISTRY = {
     component: lazyWidget(() => import('./widgets/TemperatureForecastWidget')),
     dataRequirements: ['forecast'],
   },
+ 'ai-forecast': {
+    id: 'ai-forecast',
+    name: 'AI Weather Briefing',
+    description: 'Natural language weather forecast in the style of Met Éireann',
+    icon: 'Sparkles',
+    category: 'forecast',
+    defaultSize: { w: 6, h: 5 },
+    minSize: { w: 4, h: 3 },
+    maxSize: { w: 8, h: 8 },
+    component: lazyWidget(() => import('./widgets/AIForecastWidget')),
+    dataRequirements: ['weather', 'forecast', 'location'],
+  },
 
   // === Astronomy ===
   'sun': {

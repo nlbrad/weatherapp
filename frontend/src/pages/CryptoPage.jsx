@@ -60,7 +60,7 @@ const CryptoPage = () => {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
 
-      const data = await cryptoAPI.getCryptoData();
+      const data = await cryptoAPI.getCryptoData(null, { newsLimit: 25 });
       setCryptoData(data);
       setLastUpdated(new Date());
       setError(null);
